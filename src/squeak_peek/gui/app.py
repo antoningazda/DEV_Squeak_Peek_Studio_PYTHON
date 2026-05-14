@@ -6,10 +6,83 @@ from __future__ import annotations
 
 import sys
 
+import pyqtgraph as pg
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QTabWidget
 
 from ._state import AppState
+
+# ── Light theme colours (mirror AppSettings defaults) ─────────────────────
+_TEAL   = "#7DCED2"   # primary  (0.490, 0.808, 0.824)
+_ORANGE = "#F9C06E"   # accent   (0.976, 0.753, 0.431)
+
+_QSS = f"""
+/* ── Base ────────────────────────────────────────────────────────────── */
+QMainWindow, QDialog {{ background: white; }}
+QWidget  {{ background: white; color: #111111; font-size: 13px; }}
+
+/* ── Main tab bar — teal background, orange active tab ───────────────── */
+QTabWidget#mainTabs QTabBar {{
+    background: {_TEAL};
+    padding: 4px 4px 0px 4px;
+}}
+QTabWidget#mainTabs QTabBar::tab {{
+    background: white;
+    color: #111111;
+    padding: 7px 18px;
+    margin: 3px 2px 0px 2px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    min-width: 72px;
+}}
+QTabWidget#mainTabs QTabBar::tab:selected {{
+    background: {_ORANGE};
+    font-weight: bold;
+}}
+QTabWidget#mainTabs QTabBar::tab:hover:!selected {{ background: #D8F4F6; }}
+QTabWidget#mainTabs::pane {{ border: none; background: white; }}
+
+/* ── Inner tab bars (e.g. Settings sub-tabs) ─────────────────────────── */
+QTabWidget:not(#mainTabs) QTabBar::tab {{
+    background: #EEEEEE; color: #111; padding: 5px 14px;
+    margin: 1px; border-radius: 3px;
+}}
+QTabWidget:not(#mainTabs) QTabBar::tab:selected {{
+    background: {_TEAL}; color: white;
+}}
+
+/* ── Group boxes ─────────────────────────────────────────────────────── */
+QGroupBox {{
+    border: 1px solid #D8D8D8; border-radius: 5px;
+    margin-top: 8px; padding-top: 12px; background: white;
+}}
+QGroupBox::title {{
+    subcontrol-origin: margin; subcontrol-position: top left;
+    padding: 0 4px; color: #666666;
+}}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+QPushButton {{
+    background: #F0F0F0; border: 1px solid #C8C8C8;
+    border-radius: 5px; padding: 5px 14px; color: #111111;
+}}
+QPushButton:hover   {{ background: #E4E4E4; }}
+QPushButton:pressed {{ background: #D0D0D0; }}
+
+/* ── Input fields ────────────────────────────────────────────────────── */
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
+    background: white; border: 1px solid #C8C8C8;
+    border-radius: 4px; padding: 3px 6px; color: #111111;
+}}
+
+/* ── Misc ────────────────────────────────────────────────────────────── */
+QStatusBar  {{ background: #F4F4F4; color: #555555; }}
+QMenuBar    {{ background: white;   color: #111111; }}
+QMenuBar::item:selected {{ background: #E8E8E8; }}
+QMenu       {{ background: white;   color: #111111; }}
+QMenu::item:selected {{ background: {_TEAL}; color: white; }}
+QCheckBox, QRadioButton, QLabel {{ background: transparent; color: #111111; }}
+"""
 from ._tab_data_input import DataInputTab
 from ._tab_detection import DetectionTab
 from ._tab_info import InfoTab
@@ -77,9 +150,13 @@ class MainWindow(QMainWindow):
 
 
 def main() -> None:
+    # White background for all pyqtgraph plots before any widget is created
+    pg.setConfigOptions(antialias=True, background="w", foreground="k")
+
     app = QApplication(sys.argv)
     app.setApplicationName("Squeak Peek Studio")
     app.setOrganizationName("NUDZ")
+    app.setStyleSheet(_QSS)
 
     state = AppState()
     window = MainWindow(state)

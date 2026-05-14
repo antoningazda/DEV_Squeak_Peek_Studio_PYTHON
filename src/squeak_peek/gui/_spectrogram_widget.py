@@ -2,21 +2,28 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import QRectF
+from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from squeak_peek.audio.filters import band_restrict, compute_stft
 from squeak_peek.labels.model import Label
 
-# Suppress pyqtgraph OpenGL warnings on headless systems
-pg.setConfigOptions(antialias=False)
+# Reversed grayscale: low power → light gray, high power → dark  (matches MATLAB)
+_GRAY_CM = pg.ColorMap(
+    pos=np.array([0.0, 1.0]),
+    color=np.array([[210, 210, 210, 255], [15, 15, 15, 255]], dtype=np.uint8),
+)
+
+# Detected labels: cyan dashed  |  Reference labels: orange dashed
+_PEN_DET = pg.mkPen("#4CC8CC", width=1.5, style=Qt.PenStyle.DashLine)
+_PEN_REF = pg.mkPen("#F9A030", width=1.5, style=Qt.PenStyle.DashLine)
 
 
 class SpectrogramWidget(QWidget):
-    """Stacked spectrogram (top) + waveform (bottom) with label overlays.
+    """Waveform (top) + spectrogram (bottom) with optional label overlays.
 
-    Call display() to render a time segment.  Both plots share a linked x-axis
-    so zooming/panning on one moves the other.
+    Layout mirrors the MATLAB app: waveform on top, spectrogram below,
+    both sharing the same time axis.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -28,29 +35,31 @@ class SpectrogramWidget(QWidget):
         self._glw = pg.GraphicsLayoutWidget()
         layout.addWidget(self._glw)
 
-        # ── Spectrogram plot ──────────────────────────────────────────────
-        self._spec_plot: pg.PlotItem = self._glw.addPlot(row=0, col=0)
+        # ── Waveform plot — row 0 (TOP) ───────────────────────────────────
+        self._wave_plot: pg.PlotItem = self._glw.addPlot(row=0, col=0)
+        self._wave_plot.setLabel("left", "Amplitude")
+        self._wave_plot.showGrid(x=True, y=False, alpha=0.3)
+        self._wave_plot.getAxis("bottom").setStyle(showValues=False)
+        self._wave_curve = self._wave_plot.plot(pen=pg.mkPen("#1F77B4", width=1))
+
+        # ── Spectrogram plot — row 1 (BOTTOM) ────────────────────────────
+        self._spec_plot: pg.PlotItem = self._glw.addPlot(row=1, col=0)
         self._spec_plot.setLabel("left", "Frequency (kHz)")
-        self._spec_plot.showGrid(x=False, y=True, alpha=0.25)
-        self._spec_plot.getAxis("bottom").setStyle(showValues=False)
+        self._spec_plot.setLabel("bottom", "Time (s)")
+        self._spec_plot.showGrid(x=False, y=True, alpha=0.2)
 
         self._img = pg.ImageItem()
-        self._img.setColorMap(pg.colormap.get("viridis"))
+        self._img.setColorMap(_GRAY_CM)
         self._spec_plot.addItem(self._img)
 
-        # ── Waveform plot ─────────────────────────────────────────────────
-        self._wave_plot: pg.PlotItem = self._glw.addPlot(row=1, col=0)
-        self._wave_plot.setLabel("left", "Amp")
-        self._wave_plot.setLabel("bottom", "Time (s)")
-        self._wave_plot.showGrid(x=True, y=False, alpha=0.25)
-        self._wave_curve = self._wave_plot.plot(pen=pg.mkPen("w", width=1))
-        self._wave_plot.setXLink(self._spec_plot)
+        # Share x-axis so both plots pan/zoom together
+        self._spec_plot.setXLink(self._wave_plot)
 
-        # Row height ratio 4:1
-        self._glw.ci.layout.setRowStretchFactor(0, 4)
-        self._glw.ci.layout.setRowStretchFactor(1, 1)
+        # Height ratio 1:4  (waveform is narrow, spectrogram is tall)
+        self._glw.ci.layout.setRowStretchFactor(0, 1)
+        self._glw.ci.layout.setRowStretchFactor(1, 4)
 
-        self._label_items: list[pg.LinearRegionItem] = []
+        self._label_items: list[pg.InfiniteLine] = []
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -80,9 +89,9 @@ class SpectrogramWidget(QWidget):
         f, t_rel, Sxx_db = compute_stft(chunk, fs, nperseg, overlap_factor)
         f_sub, Sxx_sub = band_restrict(f, Sxx_db, fmin_hz, fmax_hz)
         f_khz = f_sub / 1_000.0
-        t_abs = t_rel + t_start  # shape (T,)
+        t_abs = t_rel + t_start  # absolute time axis
 
-        # ImageItem default column-major: data shape (T, F) → x=time, y=freq
+        # ImageItem column-major: shape (T, F)
         img_data = Sxx_sub.T.astype(np.float32)
         vmin = float(np.percentile(img_data, 2))
         vmax = float(np.percentile(img_data, 99.5))
@@ -109,15 +118,15 @@ class SpectrogramWidget(QWidget):
         self._wave_curve.setData(t_wave[::step], chunk[::step])
         self._wave_plot.setRange(xRange=[t_start, t_end], padding=0.0)
 
-        # ── Label overlays ────────────────────────────────────────────────
+        # ── Label overlays (dashed vertical lines) ────────────────────────
         for item in self._label_items:
             self._spec_plot.removeItem(item)
         self._label_items.clear()
 
         if show_detected and detected_labels:
-            self._draw_regions(detected_labels, t_start, t_end, (0, 200, 200, 70))
+            self._draw_label_lines(detected_labels, t_start, t_end, _PEN_DET)
         if show_reference and reference_labels:
-            self._draw_regions(reference_labels, t_start, t_end, (220, 220, 220, 70))
+            self._draw_label_lines(reference_labels, t_start, t_end, _PEN_REF)
 
     def clear(self) -> None:
         self._img.clear()
@@ -128,23 +137,18 @@ class SpectrogramWidget(QWidget):
 
     # ── Private ───────────────────────────────────────────────────────────
 
-    def _draw_regions(
+    def _draw_label_lines(
         self,
         labels: list[Label],
         t_start: float,
         t_end: float,
-        rgba: tuple[int, int, int, int],
+        pen: object,
     ) -> None:
-        r, g, b, a = rgba
+        """Draw a pair of dashed vertical lines for each label in view."""
         for lbl in labels:
             if lbl.end_time < t_start or lbl.start_time > t_end:
                 continue
-            region = pg.LinearRegionItem(
-                values=[lbl.start_time, lbl.end_time],
-                orientation="vertical",
-                movable=False,
-                brush=pg.mkBrush(r, g, b, a),
-                pen=pg.mkPen((r, g, b), width=1),
-            )
-            self._spec_plot.addItem(region)
-            self._label_items.append(region)
+            for t in (lbl.start_time, lbl.end_time):
+                line = pg.InfiniteLine(pos=t, angle=90, pen=pen, movable=False)
+                self._spec_plot.addItem(line)
+                self._label_items.append(line)
