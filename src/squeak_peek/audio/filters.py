@@ -1,0 +1,121 @@
+"""
+Signal processing utilities — bandpass filtering and STFT spectrogram.
+
+MATLAB equivalents
+------------------
+    bandpass_filter  ↔  bandpass(y, [fcutMin, fcutMax], fs)
+    compute_stft     ↔  [s, f, t] = spectrogram(y, window, noverlap, nfft, fs)
+
+Phase 1 status: stubs only — full implementation is Phase 2.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def bandpass_filter(
+    signal: np.ndarray,
+    fs: int,
+    f_low: float,
+    f_high: float,
+    order: int = 5,
+) -> np.ndarray:
+    """
+    Apply a zero-phase Butterworth bandpass filter.
+
+    Matches MATLAB's ``bandpass(y, [f_low, f_high], fs)`` with the
+    default filter order (5).  Uses second-order sections (SOS) for
+    numerical stability at high sample rates (250 kHz).
+
+    Parameters
+    ----------
+    signal  : 1-D float32 audio array
+    fs      : sample rate in Hz
+    f_low   : lower cut-off frequency in Hz
+    f_high  : upper cut-off frequency in Hz
+    order   : Butterworth filter order (default 5)
+
+    Returns
+    -------
+    np.ndarray  filtered signal, same shape and dtype as *signal*
+
+    Notes
+    -----
+    Full numerical validation against MATLAB output is part of Phase 2.
+    """
+    from scipy.signal import butter, sosfilt  # lazy — scipy not always installed
+
+    nyq = fs / 2.0
+    sos = butter(order, [f_low / nyq, f_high / nyq], btype="bandpass", output="sos")
+    filtered = sosfilt(sos, signal)
+    return filtered.astype(signal.dtype)
+
+
+def compute_stft(
+    signal: np.ndarray,
+    fs: int,
+    segment_length: int,
+    overlap_factor: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute a Short-Time Fourier Transform (STFT) spectrogram in dB.
+
+    Matches MATLAB's ``spectrogram(y, window, noverlap, nfft, fs)`` with a
+    Hann window and 'density' scaling.
+
+    Parameters
+    ----------
+    signal         : 1-D audio array
+    fs             : sample rate in Hz
+    segment_length : STFT window length in samples (e.g. 8192)
+    overlap_factor : overlap fraction (0–1), e.g. 0.59
+
+    Returns
+    -------
+    frequencies : np.ndarray, shape (F,)   — Hz
+    times       : np.ndarray, shape (T,)   — seconds
+    Sxx_dB      : np.ndarray, shape (F, T) — power in dB
+
+    Notes
+    -----
+    Full numerical validation against MATLAB output is part of Phase 2.
+    """
+    from scipy.signal import spectrogram as _sp_spectrogram  # lazy
+
+    noverlap = int(segment_length * overlap_factor)
+    f, t, Sxx = _sp_spectrogram(
+        signal,
+        fs=fs,
+        window="hann",
+        nperseg=segment_length,
+        noverlap=noverlap,
+        scaling="density",
+    )
+    Sxx_dB = 10.0 * np.log10(Sxx + 1e-12)
+    return f, t, Sxx_dB
+
+
+def band_restrict(
+    frequencies: np.ndarray,
+    Sxx: np.ndarray,
+    f_low: float,
+    f_high: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Slice a spectrogram to a frequency band of interest.
+
+    Parameters
+    ----------
+    frequencies : 1-D array of frequency bins (Hz)
+    Sxx         : 2-D spectrogram array, shape (F, T)
+    f_low       : lower frequency bound (Hz)
+    f_high      : upper frequency bound (Hz)
+
+    Returns
+    -------
+    f_band  : 1-D array of frequency bins within the band
+    Sxx_band: 2-D spectrogram sliced to the band, shape (F_band, T)
+    """
+    mask = (frequencies >= f_low) & (frequencies <= f_high)
+    return frequencies[mask], Sxx[mask, :]
