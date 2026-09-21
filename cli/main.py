@@ -1,14 +1,64 @@
 """
 Headless CLI for Squeak Peek Studio.
 
-Phase 5/6 will add full sub-commands. This stub registers the CLI group
-so the 'squeak-peek-cli' entry point works from Phase 1 onward.
-
-Usage (Phase 1):
-    squeak-peek-cli --help
+Usage:
+    squeak-peek-cli detect audio.wav --detector psd
+    squeak-peek-cli batch wav_dir/ --detector bscd
+    squeak-peek-cli evaluate detected.txt reference.txt
 """
 
+from __future__ import annotations
+
+from pathlib import Path
+
 import click
+
+from squeak_peek.audio.io import load_wav
+from squeak_peek.config import AppSettings
+from squeak_peek.detectors.base import AbstractDetector
+from squeak_peek.detectors.bscd import BSCDDetector
+from squeak_peek.detectors.psd import PSDDetector
+from squeak_peek.detectors.rbd import RBDDetector
+from squeak_peek.labels.io import export_labels_detector, import_labels
+from squeak_peek.labels.metrics import compare_labels
+from squeak_peek.labels.model import Label
+from squeak_peek.labels.postprocess import merge_close_labels, remove_short_labels
+
+_DETECTOR_CHOICES = ["psd", "bscd", "rbd", "ml"]
+
+
+def _build_detector(name: str, settings: AppSettings) -> AbstractDetector:
+    """Instantiate a detector by name from the loaded settings."""
+    det = settings.detection
+    if name == "psd":
+        return PSDDetector(det.psd)
+    if name == "bscd":
+        return BSCDDetector(det.bscd)
+    if name == "rbd":
+        return RBDDetector(det.rbd)
+    raise click.ClickException(
+        "The 'ml' detector is not yet implemented (Tier 2 of PORT_PLAN.md). "
+        "Use --detector psd, bscd, or rbd."
+    )
+
+
+def _postprocess(labels: list[Label], settings: AppSettings) -> list[Label]:
+    """Apply the standard merge + remove-short post-processing pipeline."""
+    post = settings.detection.post
+    labels = merge_close_labels(labels, post.maxGapToMerge)
+    labels = remove_short_labels(labels, post.minLabelLength)
+    return labels
+
+
+def _run_detection(wav_path: Path, detector_name: str, settings: AppSettings) -> list[Label]:
+    signal, fs = load_wav(wav_path)
+    detector = _build_detector(detector_name, settings)
+    labels = detector.detect(signal, fs)
+    return _postprocess(labels, settings)
+
+
+def _default_output_path(wav_path: Path, detector_name: str) -> Path:
+    return wav_path.with_name(f"{wav_path.stem}_{detector_name}_detected.txt")
 
 
 @click.group()
@@ -18,47 +68,89 @@ def cli() -> None:
 
 
 @cli.command()
-@click.argument("wav_path", type=click.Path(exists=True))
+@click.argument("wav_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.option(
     "--detector", "-d",
-    type=click.Choice(["psd", "bscd", "rbd", "ml"], case_sensitive=False),
+    type=click.Choice(_DETECTOR_CHOICES, case_sensitive=False),
     default="psd",
     show_default=True,
     help="Detection algorithm to use.",
 )
 @click.option(
     "--settings", "-s",
-    type=click.Path(exists=True),
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default="settings/default.json",
     show_default=True,
     help="Path to settings JSON file.",
 )
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output label file path.")
-def detect(wav_path: str, detector: str, settings: str, output: str | None) -> None:
-    """Run a detector on a single WAV file. (Phase 2)"""
-    click.echo(
-        f"[Phase 2 pending] Would run '{detector.upper()}' detector on: {wav_path}"
-    )
-    click.echo(f"  Settings: {settings}")
-    click.echo(f"  Output:   {output or '<auto>'}")
+@click.option("--output", "-o", type=click.Path(path_type=Path), default=None, help="Output label file path.")
+def detect(wav_path: Path, detector: str, settings: Path, output: Path | None) -> None:
+    """Run a detector on a single WAV file."""
+    app_settings = AppSettings.from_json(settings)
+    labels = _run_detection(wav_path, detector.lower(), app_settings)
+
+    out_path = output or _default_output_path(wav_path, detector.lower())
+    export_labels_detector(out_path, labels)
+
+    click.echo(f"[{detector.upper()}] {len(labels)} events detected in: {wav_path}")
+    click.echo(f"  Output: {out_path}")
 
 
 @cli.command()
-@click.argument("wav_dir", type=click.Path(exists=True, file_okay=False))
-@click.option("--detector", "-d", default="psd", show_default=True)
-@click.option("--settings", "-s", default="settings/default.json", show_default=True)
-@click.option("--output-dir", "-o", type=click.Path(), default=None)
-def batch(wav_dir: str, detector: str, settings: str, output_dir: str | None) -> None:
-    """Run a detector on all WAV files in a directory. (Phase 2)"""
-    click.echo(f"[Phase 2 pending] Would batch-process: {wav_dir}")
+@click.argument("wav_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--detector", "-d",
+    type=click.Choice(_DETECTOR_CHOICES, case_sensitive=False),
+    default="psd",
+    show_default=True,
+)
+@click.option(
+    "--settings", "-s",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default="settings/default.json",
+    show_default=True,
+)
+@click.option("--output-dir", "-o", type=click.Path(path_type=Path), default=None)
+def batch(wav_dir: Path, detector: str, settings: Path, output_dir: Path | None) -> None:
+    """Run a detector on all WAV files in a directory."""
+    app_settings = AppSettings.from_json(settings)
+    wav_files = sorted(wav_dir.glob("*.wav"))
+    if not wav_files:
+        click.echo(f"No .wav files found in: {wav_dir}")
+        return
+
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    for wav_path in wav_files:
+        labels = _run_detection(wav_path, detector.lower(), app_settings)
+        out_path = (
+            output_dir / f"{wav_path.stem}_{detector.lower()}_detected.txt"
+            if output_dir is not None
+            else _default_output_path(wav_path, detector.lower())
+        )
+        export_labels_detector(out_path, labels)
+        click.echo(f"[{detector.upper()}] {wav_path.name}: {len(labels)} events -> {out_path}")
 
 
 @cli.command()
-@click.argument("detected", type=click.Path(exists=True))
-@click.argument("reference", type=click.Path(exists=True))
-def evaluate(detected: str, reference: str) -> None:
-    """Compare detected labels against a reference file (TP/FP/FN/F1). (Phase 4)"""
-    click.echo(f"[Phase 4 pending] Would compare:\n  Detected:  {detected}\n  Reference: {reference}")
+@click.argument("detected", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("reference", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def evaluate(detected: Path, reference: Path) -> None:
+    """Compare detected labels against a reference file (TP/FP/FN/F1)."""
+    detected_labels = import_labels(detected)
+    reference_labels = import_labels(reference)
+
+    stats = compare_labels(detected_labels, reference_labels)
+
+    click.echo(f"Detected:  {detected} ({stats.total_detected_labels} labels)")
+    click.echo(f"Reference: {reference} ({stats.total_provided_labels} labels)")
+    click.echo(f"  True Positives:  {stats.true_positives}")
+    click.echo(f"  False Positives: {stats.false_positives}")
+    click.echo(f"  False Negatives: {stats.false_negatives}")
+    click.echo(f"  Precision: {stats.precision:.3f}")
+    click.echo(f"  Recall:    {stats.recall:.3f}")
+    click.echo(f"  F1 Score:  {stats.f1_score:.3f}")
 
 
 if __name__ == "__main__":
