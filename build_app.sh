@@ -20,7 +20,16 @@ rm -rf build dist
 xattr -cr "dist/Squeak Peek Studio.app"
 codesign -s - --force --deep --timestamp "dist/Squeak Peek Studio.app"
 
+# ── DMG installer (drag-to-Applications, like any other Mac app) ───────────
+DMG_STAGE="$(mktemp -d)"
+cp -R "dist/Squeak Peek Studio.app" "$DMG_STAGE/"
+ln -s /Applications "$DMG_STAGE/Applications"
+rm -f "dist/Squeak Peek Studio.dmg"
+hdiutil create -volname "Squeak Peek Studio" -srcfolder "$DMG_STAGE" -ov -format UDZO "dist/Squeak Peek Studio.dmg"
+rm -rf "$DMG_STAGE"
+
 echo
 echo "=== Build complete ==="
 echo "App bundle: dist/Squeak Peek Studio.app"
+echo "Installer:  dist/Squeak Peek Studio.dmg"
 echo "Launch with: open 'dist/Squeak Peek Studio.app'"

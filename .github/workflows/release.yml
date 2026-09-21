@@ -56,7 +56,12 @@ jobs:
 
       - name: Package artifact (macOS)
         if: runner.os == 'macOS'
-        run: ditto -c -k --sequesterRsrc --keepParent "dist/Squeak Peek Studio.app" "${{ matrix.asset_name }}.zip"
+        run: |
+          DMG_STAGE="$(mktemp -d)"
+          cp -R "dist/Squeak Peek Studio.app" "$DMG_STAGE/"
+          ln -s /Applications "$DMG_STAGE/Applications"
+          hdiutil create -volname "Squeak Peek Studio" -srcfolder "$DMG_STAGE" -ov -format UDZO "${{ matrix.asset_name }}.dmg"
+          rm -rf "$DMG_STAGE"
 
       - name: Package artifact (Windows)
         if: runner.os == 'Windows'
@@ -73,6 +78,7 @@ jobs:
         with:
           name: ${{ matrix.asset_name }}
           path: |
+            ${{ matrix.asset_name }}.dmg
             ${{ matrix.asset_name }}.zip
             ${{ matrix.asset_name }}.tar.gz
           if-no-files-found: ignore
