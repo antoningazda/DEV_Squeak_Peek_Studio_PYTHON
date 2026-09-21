@@ -1,4 +1,4 @@
-"""
+r"""
 Label I/O: import and export of USV event annotations.
 
 Implements the canonical 2-line-per-label text format:
