@@ -224,6 +224,7 @@ class MLParams(BaseModel):
 
     modelPath: str = ""              # path to a saved .joblib model file
     minEventDuration: float = 0.003  # minimum event duration after merging (s)
+    sensitivity: float = 0.5         # frame-probability threshold (0-1); higher = more selective
 
     model_config = {"populate_by_name": True}
 

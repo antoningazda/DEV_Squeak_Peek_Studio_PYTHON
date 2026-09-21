@@ -8,14 +8,19 @@ Python reimplementation of [Squeak Peek Studio](../DEV_Squeak-Peek-Studio), a MA
 |-------|-------------|--------|
 | 1 | Foundation & Infrastructure | ✅ Done |
 | 2 | Signal Processing & Detection Engines (PSD, BSCD, RBD) | ✅ Detectors ported (Tier 1); see `PORT_PLAN.md` |
-| 3 | ML Feature Extraction & Detector | 🟡 Feature extraction ported (Tier 1); ML detector/training pending (Tier 2) — see `PORT_PLAN.md` |
+| 3 | ML Feature Extraction & Detector | ✅ Feature extraction (Tier 1) + Random Forest detector, training, calibration (Tier 2) ported |
 | 4 | Label System & Evaluation | ✅ Label I/O, post-processing, metrics ported (Tier 1); see `PORT_PLAN.md` |
-| 5 | GUI (PyQt6) | ✅ Detection/Metrics tabs wired to PSD/BSCD/RBD + compare_labels (Tier 3); ML detector option pending Tier 2 |
-| 6 | Testing, Validation & Packaging | 🟡 CI green (3.11/3.12 × macOS/Ubuntu/Windows); Tier 1/3 have unit + CLI test coverage; ML coverage pending Tier 2 |
+| 5 | GUI (PyQt6) | ✅ Detection/Metrics tabs wired to PSD/BSCD/RBD/ML + compare_labels (Tier 3) |
+| 6 | Testing, Validation & Packaging | ✅ CI green (3.11/3.12 × macOS/Ubuntu/Windows); unit + CLI test coverage across all detectors |
 
-Tiers 1 and 3 of `PORT_PLAN.md` are complete and merged. Tier 2 (ML detector
-inference + training) is the only remaining work — see `PORT_PLAN.md` for
-its breakdown (WP6/WP7).
+All of Tiers 1–3 in `PORT_PLAN.md` are complete and merged, including the ML
+detector (WP6: `squeak_peek.detectors.ml.MLDetector`) and its training/
+calibration pipeline (WP7: `squeak_peek.ml.train`, `squeak_peek.ml.optimize`).
+Train a model with `squeak-peek-cli train <wav> --labels <labels> --output <path>`,
+then point `Detection.ML.modelPath` at it in your settings JSON to use
+`--detector ml` / the ML radio button (the Settings tab doesn't expose this
+field yet — edit the JSON directly, or set `AppState.settings.detection.ml.modelPath`
+before launching the GUI).
 
 ## Requirements
 

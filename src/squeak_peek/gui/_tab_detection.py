@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.detectors.bscd import BSCDDetector
+from squeak_peek.detectors.ml import MLDetector
 from squeak_peek.detectors.psd import PSDDetector
 from squeak_peek.detectors.rbd import RBDDetector
 from squeak_peek.labels.io import export_labels_detector
@@ -113,16 +114,6 @@ class DetectionTab(QWidget):
             return
 
         det_name = _DETECTORS[self._det_btn_group.checkedId()]
-        if det_name == "ML":
-            QMessageBox.information(
-                self,
-                "Not yet implemented",
-                "The ML detector is not yet implemented (Tier 2 of PORT_PLAN.md).\n\n"
-                "Use PSD, BSCD, or RBD, or load pre-computed label files via the "
-                "Data Input tab.",
-            )
-            return
-
         detector = self._build_detector(det_name)
 
         self._run_btn.setEnabled(False)
@@ -161,4 +152,6 @@ class DetectionTab(QWidget):
             return PSDDetector(det.psd)
         if det_name == "BSCD":
             return BSCDDetector(det.bscd)
-        return RBDDetector(det.rbd)
+        if det_name == "RBD":
+            return RBDDetector(det.rbd)
+        return MLDetector(det.ml)

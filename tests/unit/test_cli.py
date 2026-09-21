@@ -36,9 +36,11 @@ class TestDetectCommand:
         lines = out_path.read_text().splitlines()
         assert len(lines) % 2 == 0  # 2-line-per-label format
 
-    def test_detect_ml_not_implemented(self, example_wav_path: Path, tmp_path: Path, settings) -> None:
+    def test_detect_ml_without_model_configured_fails_clearly(
+        self, example_wav_path: Path, tmp_path: Path, settings
+    ) -> None:
         settings_path = tmp_path / "settings.json"
-        settings.save_json(settings_path)
+        settings.save_json(settings_path)  # default settings: Detection.ML.modelPath == ""
 
         runner = CliRunner()
         result = runner.invoke(
@@ -47,7 +49,7 @@ class TestDetectCommand:
         )
 
         assert result.exit_code != 0
-        assert "not yet implemented" in result.output.lower()
+        assert "model" in result.output.lower()
 
     def test_detect_default_output_path(self, example_wav_path: Path, tmp_path: Path, settings) -> None:
         # Copy the wav into a writable tmp dir so the default output path lands there
@@ -92,6 +94,59 @@ class TestEvaluateCommand:
 
         assert result.exit_code == 0, result.output
         assert "1.000" in result.output  # perfect precision/recall/F1
+
+
+class TestTrainCommand:
+    def test_train_then_detect_ml_end_to_end(
+        self, example_wav_path: Path, example_ref_labels_path: Path, tmp_path: Path, settings
+    ) -> None:
+        model_path = tmp_path / "model.joblib"
+        runner = CliRunner()
+
+        train_result = runner.invoke(
+            cli,
+            [
+                "train", str(example_wav_path),
+                "--labels", str(example_ref_labels_path),
+                "--output", str(model_path),
+                "--n-trees", "50",
+            ],
+        )
+        assert train_result.exit_code == 0, train_result.output
+        assert model_path.exists()
+        assert "OOB accuracy" in train_result.output
+
+        settings.detection.ml.modelPath = str(model_path)
+        settings_path = tmp_path / "settings.json"
+        settings.save_json(settings_path)
+        out_path = tmp_path / "ml_detected.txt"
+
+        detect_result = runner.invoke(
+            cli,
+            [
+                "detect", str(example_wav_path),
+                "--detector", "ml",
+                "--settings", str(settings_path),
+                "--output", str(out_path),
+            ],
+        )
+        assert detect_result.exit_code == 0, detect_result.output
+        assert out_path.exists()
+
+    def test_train_mismatched_wav_and_label_counts_fails(
+        self, example_wav_path: Path, example_ref_labels_path: Path, tmp_path: Path
+    ) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "train", str(example_wav_path), str(example_wav_path),
+                "--labels", str(example_ref_labels_path),
+                "--output", str(tmp_path / "model.joblib"),
+            ],
+        )
+        assert result.exit_code != 0
+        assert "WAV_PATHS" in result.output or "labels" in result.output.lower()
 
 
 class TestBatchCommand:
