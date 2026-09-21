@@ -11,6 +11,13 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QTabWidget
 
 from ._state import AppState
+from ._tab_data_input import DataInputTab
+from ._tab_detection import DetectionTab
+from ._tab_info import InfoTab
+from ._tab_label_edit import LabelEditTab
+from ._tab_metrics import MetricsTab
+from ._tab_settings import SettingsTab
+from ._tab_visualization import VisualizationTab
 
 # ── Light theme colours (mirror AppSettings defaults) ─────────────────────
 _TEAL   = "#7DCED2"   # primary  (0.490, 0.808, 0.824)
@@ -83,13 +90,6 @@ QMenu       {{ background: white;   color: #111111; }}
 QMenu::item:selected {{ background: {_TEAL}; color: white; }}
 QCheckBox, QRadioButton, QLabel {{ background: transparent; color: #111111; }}
 """
-from ._tab_data_input import DataInputTab
-from ._tab_detection import DetectionTab
-from ._tab_info import InfoTab
-from ._tab_label_edit import LabelEditTab
-from ._tab_metrics import MetricsTab
-from ._tab_settings import SettingsTab
-from ._tab_visualization import VisualizationTab
 
 
 class MainWindow(QMainWindow):

@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
-    QGroupBox,
     QHBoxLayout,
     QMessageBox,
     QPushButton,
@@ -14,8 +13,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ._state import AppState
 from squeak_peek.config import AppSettings
+
+from ._state import AppState
 
 
 class SettingsTab(QWidget):

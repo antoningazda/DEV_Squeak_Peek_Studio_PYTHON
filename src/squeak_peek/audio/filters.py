@@ -52,17 +52,56 @@ def bandpass_filter(
     return filtered.astype(signal.dtype)
 
 
+def bandpass_filter_filtfilt(
+    signal: np.ndarray,
+    fs: int,
+    f_low: float,
+    f_high: float,
+    order: int = 12,
+) -> np.ndarray:
+    """
+    Apply a zero-phase Butterworth bandpass filter using filtfilt.
+
+    Matches MATLAB's ``designfilt('bandpassiir', FilterOrder, ...)`` followed by
+    ``filtfilt()``, which applies the filter forward and backward for zero-phase
+    distortion. Equivalent to MATLAB's filtfilt with order-12 IIR bandpass.
+
+    Parameters
+    ----------
+    signal  : 1-D float32 audio array
+    fs      : sample rate in Hz
+    f_low   : lower cut-off frequency in Hz
+    f_high  : upper cut-off frequency in Hz
+    order   : Butterworth filter order (default 12, matching MATLAB PSDDetector)
+
+    Returns
+    -------
+    np.ndarray  filtered signal, same shape and dtype as *signal*
+
+    Notes
+    -----
+    Uses scipy.signal.sosfiltfilt for zero-phase filtering (forward-backward pass).
+    """
+    from scipy.signal import butter, sosfiltfilt  # lazy — scipy not always installed
+
+    nyq = fs / 2.0
+    sos = butter(order, [f_low / nyq, f_high / nyq], btype="bandpass", output="sos")
+    filtered = sosfiltfilt(sos, signal)
+    return filtered.astype(signal.dtype)
+
+
 def compute_stft(
     signal: np.ndarray,
     fs: int,
     segment_length: int,
     overlap_factor: float,
+    window: str = "hann",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute a Short-Time Fourier Transform (STFT) spectrogram in dB.
 
     Matches MATLAB's ``spectrogram(y, window, noverlap, nfft, fs)`` with a
-    Hann window and 'density' scaling.
+    Hann window (default) and 'density' scaling.
 
     Parameters
     ----------
@@ -70,6 +109,7 @@ def compute_stft(
     fs             : sample rate in Hz
     segment_length : STFT window length in samples (e.g. 8192)
     overlap_factor : overlap fraction (0–1), e.g. 0.59
+    window         : window function name (default "hann"), e.g. "hamming", "hann"
 
     Returns
     -------
@@ -80,6 +120,7 @@ def compute_stft(
     Notes
     -----
     Full numerical validation against MATLAB output is part of Phase 2.
+    Backward compatible: omitting window= uses "hann" as before.
     """
     from scipy.signal import spectrogram as _sp_spectrogram  # lazy
 
@@ -87,7 +128,7 @@ def compute_stft(
     f, t, Sxx = _sp_spectrogram(
         signal,
         fs=fs,
-        window="hann",
+        window=window,
         nperseg=segment_length,
         noverlap=noverlap,
         scaling="density",

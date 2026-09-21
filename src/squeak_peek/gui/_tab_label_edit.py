@@ -145,7 +145,6 @@ class LabelEditTab(QWidget):
         t1 = min(s.duration, lbl.end_time + pad)
 
         le = s.settings.label_edit
-        vis = s.settings.visualization
         self._spec.display(
             samples=s.samples,
             fs=s.fs,

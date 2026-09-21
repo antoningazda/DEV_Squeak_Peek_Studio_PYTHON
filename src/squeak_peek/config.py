@@ -17,10 +17,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Annotated
 
 from pydantic import BaseModel, Field, field_validator
-
 
 # ── Colour triple (MATLAB stores as [R, G, B] floats 0-1) ──────────────────
 
@@ -314,13 +312,13 @@ class AppSettings(BaseModel):
     # ── Constructors ────────────────────────────────────────────────────
 
     @classmethod
-    def from_json(cls, path: str | Path) -> "AppSettings":
+    def from_json(cls, path: str | Path) -> AppSettings:
         """Load settings from a JSON file (e.g. settings/default.json)."""
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
         return cls.model_validate(raw)
 
     @classmethod
-    def defaults(cls) -> "AppSettings":
+    def defaults(cls) -> AppSettings:
         """Return a settings object with all default values (no file needed)."""
         return cls()
 

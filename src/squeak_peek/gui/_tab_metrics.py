@@ -10,8 +10,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ._state import AppState
 from squeak_peek.labels.model import Label
+
+from ._state import AppState
 
 
 class MetricsTab(QWidget):
