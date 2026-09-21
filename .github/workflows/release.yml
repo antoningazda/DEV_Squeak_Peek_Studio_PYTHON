@@ -109,4 +109,6 @@ jobs:
           files: artifacts/*
           repository: antoningazda/squeak-peek-studio-releases
           token: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
-          generate_release_notes: true
+          # Auto-generated notes need PR/commit read access the fine-grained
+          # PAT doesn't have (it's scoped to Contents only); off instead.
+          generate_release_notes: false
