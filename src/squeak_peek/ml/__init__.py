@@ -1,8 +1,11 @@
 """
-Machine Learning pipeline.
+Machine Learning pipeline for the ML (Random Forest) detector.
 
-Phase 3 will implement:
-    train.py    — MLDetectorTrain: train a Random Forest on labeled WAV files
-    optimize.py — MLDetectorOptimize: Optuna hyperparameter search
-    pipeline.py — Multi-phase classification pipeline (trenink / klasifikace)
+    train.py    — train_model(): sliding-window Random Forest training
+                  (ports MLDetectorTrain.m)
+    optimize.py — sweep_sensitivity()/sweep_noise_ratio(): threshold and
+                  class-balance calibration against a validation set
+                  (ports MLDetectorOptimize.m)
+
+See squeak_peek.detectors.ml.MLDetector for inference.
 """
