@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from . import _theme as t
 from ._spectrogram_widget import SpectrogramWidget
 from ._state import AppState
 
@@ -25,11 +26,12 @@ class VisualizationTab(QWidget):
         state.labels_changed.connect(self._refresh)
         state.segment_changed.connect(self._refresh)
         state.settings_changed.connect(self._refresh)
+        t.signal.changed.connect(self._on_theme_changed)
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
+        layout.setContentsMargins(t.SP_2, t.SP_2, t.SP_2, t.SP_2)
+        layout.setSpacing(t.SP_2)
 
         self._spec = SpectrogramWidget()
         layout.addWidget(self._spec, stretch=1)
@@ -37,13 +39,14 @@ class VisualizationTab(QWidget):
         # ── Navigation bar ────────────────────────────────────────────────
         nav = QGroupBox()
         nav_row = QHBoxLayout(nav)
-        nav_row.setSpacing(8)
+        nav_row.setSpacing(t.SP_3)
 
         nav_row.addWidget(QLabel("Start (s):"))
         self._start_spin = QDoubleSpinBox()
         self._start_spin.setRange(0.0, 99_999.0)
         self._start_spin.setDecimals(3)
         self._start_spin.setSingleStep(0.1)
+        self._start_spin.setMinimumWidth(90)
         self._start_spin.valueChanged.connect(self._on_start_changed)
         nav_row.addWidget(self._start_spin)
 
@@ -53,6 +56,7 @@ class VisualizationTab(QWidget):
         self._len_spin.setDecimals(3)
         self._len_spin.setSingleStep(0.1)
         self._len_spin.setValue(self._state.segment_length)
+        self._len_spin.setMinimumWidth(80)
         self._len_spin.valueChanged.connect(self._on_length_changed)
         nav_row.addWidget(self._len_spin)
 
@@ -96,6 +100,10 @@ class VisualizationTab(QWidget):
         new_start = self._state.segment_start + self._state.segment_length
         if new_start < self._state.duration:
             self._start_spin.setValue(new_start)
+
+    def _on_theme_changed(self) -> None:
+        self._spec.refresh_theme()
+        self._refresh()
 
     def _refresh(self) -> None:
         try:

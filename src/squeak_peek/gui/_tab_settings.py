@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtWidgets import (
+    QComboBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import (
 
 from squeak_peek.config import AppSettings
 
+from . import _theme as t
 from ._state import AppState
 
 
@@ -27,12 +29,16 @@ class SettingsTab(QWidget):
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(t.SP_5, t.SP_4, t.SP_5, t.SP_4)
+        layout.setSpacing(t.SP_3)
 
         inner = QTabWidget()
         inner.setObjectName("innerTabs")
+        inner.setDocumentMode(True)
         inner.addTab(self._make_viz_tab(), "Visualization")
-        inner.addTab(self._make_psd_tab(), "PSD Detector")
+        inner.addTab(self._make_psd_tab(), "PSD detector")
         inner.addTab(self._make_post_tab(), "Post-processing")
+        inner.addTab(self._make_appearance_tab(), "Appearance")
         layout.addWidget(inner)
 
         btn_row = QHBoxLayout()
@@ -42,6 +48,7 @@ class SettingsTab(QWidget):
         save_btn = QPushButton("Save settings…")
         save_btn.clicked.connect(self._save)
         apply_btn = QPushButton("Apply")
+        apply_btn.setObjectName("primaryBtn")
         apply_btn.setDefault(True)
         apply_btn.clicked.connect(self._apply)
         btn_row.addWidget(load_btn)
@@ -54,6 +61,9 @@ class SettingsTab(QWidget):
     def _make_viz_tab(self) -> QWidget:
         w = QWidget()
         form = QFormLayout(w)
+        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
+        form.setVerticalSpacing(t.SP_2)
+        form.setHorizontalSpacing(t.SP_3)
         vis = self._state.settings.visualization
 
         self._viz_window = QSpinBox()
@@ -92,6 +102,9 @@ class SettingsTab(QWidget):
     def _make_psd_tab(self) -> QWidget:
         w = QWidget()
         form = QFormLayout(w)
+        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
+        form.setVerticalSpacing(t.SP_2)
+        form.setHorizontalSpacing(t.SP_3)
         psd = self._state.settings.detection.psd
 
         self._psd_fmin = QDoubleSpinBox()
@@ -134,6 +147,9 @@ class SettingsTab(QWidget):
     def _make_post_tab(self) -> QWidget:
         w = QWidget()
         form = QFormLayout(w)
+        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
+        form.setVerticalSpacing(t.SP_2)
+        form.setHorizontalSpacing(t.SP_3)
         post = self._state.settings.detection.post
 
         self._post_gap = QDoubleSpinBox()
@@ -151,6 +167,26 @@ class SettingsTab(QWidget):
         form.addRow("Min label length:", self._post_min_len)
 
         return w
+
+    def _make_appearance_tab(self) -> QWidget:
+        w = QWidget()
+        form = QFormLayout(w)
+        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
+        form.setVerticalSpacing(t.SP_2)
+        form.setHorizontalSpacing(t.SP_3)
+
+        self._theme_combo = QComboBox()
+        self._theme_combo.addItem("System", "system")
+        self._theme_combo.addItem("Light", "light")
+        self._theme_combo.addItem("Dark", "dark")
+        self._theme_combo.setCurrentIndex(max(self._theme_combo.findData(t.get_mode()), 0))
+        self._theme_combo.currentIndexChanged.connect(self._on_theme_mode_changed)
+        form.addRow("Color mode:", self._theme_combo)
+
+        return w
+
+    def _on_theme_mode_changed(self, index: int) -> None:
+        t.set_mode(self._theme_combo.itemData(index))
 
     # ── Actions ───────────────────────────────────────────────────────────
 

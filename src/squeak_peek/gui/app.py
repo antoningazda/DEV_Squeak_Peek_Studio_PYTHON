@@ -8,8 +8,9 @@ import sys
 
 import pyqtgraph as pg
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QTabWidget
+from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QStyleFactory, QTabWidget
 
+from . import _theme as t
 from ._state import AppState
 from ._tab_data_input import DataInputTab
 from ._tab_detection import DetectionTab
@@ -19,76 +20,159 @@ from ._tab_metrics import MetricsTab
 from ._tab_settings import SettingsTab
 from ._tab_visualization import VisualizationTab
 
-# ── Light theme colours (mirror AppSettings defaults) ─────────────────────
-_TEAL   = "#7DCED2"   # primary  (0.490, 0.808, 0.824)
-_ORANGE = "#F9C06E"   # accent   (0.976, 0.753, 0.431)
 
-_QSS = f"""
+def _build_qss() -> str:
+    """Built lazily (after QApplication exists) so ``t.ACCENT`` etc. resolve
+    against the OS's current light/dark appearance."""
+    return f"""
 /* ── Base ────────────────────────────────────────────────────────────── */
-QMainWindow, QDialog {{ background: white; }}
-QWidget  {{ background: white; color: #111111; font-size: 13px; }}
+QMainWindow, QDialog {{ background: {t.BG_APP}; }}
+QWidget {{
+    background: transparent;
+    color: {t.TEXT_PRIMARY};
+    font-size: {t.TEXT_SM}px;
+    selection-background-color: {t.ACCENT_SUBTLE};
+    selection-color: {t.TEXT_PRIMARY};
+}}
+QMainWindow > QWidget, QTabWidget#mainTabs > QWidget {{ background: {t.BG_APP}; }}
+QToolTip {{
+    background: {t.GRAY_800}; color: {t.GRAY_0}; border: none;
+    padding: {t.SP_1}px {t.SP_2}px; border-radius: {t.RADIUS_CONTROL}px;
+}}
 
-/* ── Main tab bar — teal background, orange active tab ───────────────── */
+/* ── Main tab bar — flat, underline indicator ─────────────────────────── */
+QTabWidget#mainTabs::pane {{
+    border: none; border-top: 1px solid {t.BORDER}; background: {t.BG_APP}; top: -1px;
+}}
 QTabWidget#mainTabs QTabBar {{
-    background: {_TEAL};
-    padding: 4px 4px 0px 4px;
+    background: {t.SURFACE};
+    border-bottom: 1px solid {t.BORDER};
 }}
 QTabWidget#mainTabs QTabBar::tab {{
-    background: white;
-    color: #111111;
-    padding: 7px 18px;
-    margin: 3px 2px 0px 2px;
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
-    min-width: 72px;
+    background: transparent;
+    color: {t.TEXT_SECONDARY};
+    padding: {t.SP_3}px {t.SP_4}px;
+    margin: 0px;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
 }}
 QTabWidget#mainTabs QTabBar::tab:selected {{
-    background: {_ORANGE};
-    font-weight: bold;
+    color: {t.TEXT_PRIMARY};
+    font-weight: 600;
+    border-bottom: 2px solid {t.ACCENT};
 }}
-QTabWidget#mainTabs QTabBar::tab:hover:!selected {{ background: #D8F4F6; }}
-QTabWidget#mainTabs::pane {{ border: none; background: white; }}
+QTabWidget#mainTabs QTabBar::tab:hover:!selected {{ color: {t.TEXT_PRIMARY}; }}
 
-/* ── Inner tab bars (Settings sub-tabs — named "innerTabs") ──────────── */
+/* ── Inner tab bars (Settings sub-tabs — named "innerTabs") ───────────── */
+QTabWidget#innerTabs::pane {{ border: none; border-top: 1px solid {t.BORDER}; top: -1px; }}
 QTabWidget#innerTabs QTabBar::tab {{
-    background: #EEEEEE; color: #111; padding: 5px 14px;
-    margin: 1px; border-radius: 3px;
+    background: transparent; color: {t.TEXT_SECONDARY};
+    padding: {t.SP_2}px {t.SP_3}px; margin-right: {t.SP_3}px;
+    border-bottom: 2px solid transparent;
 }}
 QTabWidget#innerTabs QTabBar::tab:selected {{
-    background: {_TEAL}; color: white;
+    color: {t.TEXT_PRIMARY}; font-weight: 600;
+    border-bottom: 2px solid {t.ACCENT};
 }}
+QTabWidget#innerTabs QTabBar::tab:hover:!selected {{ color: {t.TEXT_PRIMARY}; }}
 
-/* ── Group boxes ─────────────────────────────────────────────────────── */
+/* ── Group boxes (panels — one hairline border, no extra decoration) ────*/
 QGroupBox {{
-    border: 1px solid #D8D8D8; border-radius: 5px;
-    margin-top: 8px; padding-top: 12px; background: white;
+    background: {t.SURFACE};
+    border: 1px solid {t.BORDER};
+    border-radius: {t.RADIUS_PANEL}px;
+    margin-top: {t.SP_4}px; padding: {t.SP_4}px {t.SP_3}px {t.SP_3}px {t.SP_3}px;
 }}
 QGroupBox::title {{
     subcontrol-origin: margin; subcontrol-position: top left;
-    padding: 0 4px; color: #666666;
+    left: {t.SP_2}px; padding: 0 {t.SP_1}px;
+    color: {t.TEXT_SECONDARY}; font-weight: 600; font-size: {t.TEXT_XS}px;
 }}
 
 /* ── Buttons ─────────────────────────────────────────────────────────── */
 QPushButton {{
-    background: #F0F0F0; border: 1px solid #C8C8C8;
-    border-radius: 5px; padding: 5px 14px; color: #111111;
+    background: {t.SURFACE}; border: 1px solid {t.BORDER};
+    border-radius: {t.RADIUS_CONTROL}px; padding: {t.SP_2}px {t.SP_4}px;
+    color: {t.TEXT_PRIMARY};
 }}
-QPushButton:hover   {{ background: #E4E4E4; }}
-QPushButton:pressed {{ background: #D0D0D0; }}
+QPushButton:hover    {{ background: {t.SURFACE_HOVER}; border-color: {t.BORDER_HOVER}; }}
+QPushButton:pressed  {{ background: {t.SURFACE_PRESSED}; }}
+QPushButton:disabled {{ color: {t.TEXT_MUTED}; background: {t.SURFACE_MUTED}; }}
+QPushButton:focus    {{ outline: none; border: 1px solid {t.ACCENT}; }}
+
+QPushButton#primaryBtn {{
+    background: {t.ACCENT}; border: 1px solid {t.ACCENT};
+    color: {t.TEXT_ON_ACCENT}; font-weight: 600;
+}}
+QPushButton#primaryBtn:hover   {{ background: {t.ACCENT_HOVER}; border-color: {t.ACCENT_HOVER}; }}
+QPushButton#primaryBtn:pressed {{ background: {t.ACCENT_ACTIVE}; border-color: {t.ACCENT_ACTIVE}; }}
+QPushButton#primaryBtn:disabled {{ background: {t.SURFACE_MUTED}; border-color: {t.SURFACE_MUTED}; color: {t.TEXT_MUTED}; }}
+
+QPushButton#dangerBtn {{
+    background: {t.SURFACE}; border: 1px solid {t.BORDER};
+    color: {t.DANGER}; font-weight: 500;
+}}
+QPushButton#dangerBtn:hover   {{ background: {t.DANGER_SUBTLE}; border-color: {t.DANGER}; }}
+QPushButton#dangerBtn:pressed {{ background: {t.DANGER_SUBTLE}; }}
 
 /* ── Input fields ────────────────────────────────────────────────────── */
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
-    background: white; border: 1px solid #C8C8C8;
-    border-radius: 4px; padding: 3px 6px; color: #111111;
+    background: {t.SURFACE}; border: 1px solid {t.BORDER};
+    border-radius: {t.RADIUS_CONTROL}px; padding: {t.SP_1}px {t.SP_2}px;
+    color: {t.TEXT_PRIMARY};
+    selection-background-color: {t.ACCENT_SUBTLE};
+}}
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{
+    border: 1px solid {t.ACCENT};
+}}
+QLineEdit:disabled {{ color: {t.TEXT_MUTED}; background: {t.SURFACE_MUTED}; }}
+QLineEdit:read-only {{ background: {t.SURFACE_MUTED}; color: {t.TEXT_SECONDARY}; }}
+QComboBox::drop-down {{ border: none; width: 20px; }}
+QComboBox QAbstractItemView {{
+    background: {t.SURFACE}; border: 1px solid {t.BORDER};
+    selection-background-color: {t.ACCENT_SUBTLE}; selection-color: {t.TEXT_PRIMARY};
+    outline: none; padding: {t.SP_1}px;
 }}
 
+/* ── Checkboxes / radio buttons ──────────────────────────────────────── */
+QCheckBox, QRadioButton, QLabel {{ background: transparent; color: {t.TEXT_PRIMARY}; }}
+QCheckBox::indicator, QRadioButton::indicator {{
+    width: 15px; height: 15px;
+    border: 1px solid {t.BORDER_HOVER}; background: {t.SURFACE};
+}}
+QCheckBox::indicator {{ border-radius: 4px; }}
+QRadioButton::indicator {{ border-radius: 8px; }}
+QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {t.ACCENT}; }}
+QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
+    background: {t.ACCENT}; border-color: {t.ACCENT};
+}}
+
+/* ── Form layout labels ──────────────────────────────────────────────── */
+QFormLayout QLabel {{ color: {t.TEXT_SECONDARY}; }}
+
+/* ── Scroll bars ─────────────────────────────────────────────────────── */
+QScrollBar:vertical {{ background: transparent; width: 11px; margin: 2px; }}
+QScrollBar::handle:vertical {{
+    background: {t.BORDER_HOVER}; border-radius: 5px; min-height: 24px;
+}}
+QScrollBar::handle:vertical:hover {{ background: {t.TEXT_MUTED}; }}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
+QScrollBar:horizontal {{ background: transparent; height: 11px; margin: 2px; }}
+QScrollBar::handle:horizontal {{
+    background: {t.BORDER_HOVER}; border-radius: 5px; min-width: 24px;
+}}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0px; }}
+
 /* ── Misc ────────────────────────────────────────────────────────────── */
-QStatusBar  {{ background: #F4F4F4; color: #555555; }}
-QMenuBar    {{ background: white;   color: #111111; }}
-QMenuBar::item:selected {{ background: #E8E8E8; }}
-QMenu       {{ background: white;   color: #111111; }}
-QMenu::item:selected {{ background: {_TEAL}; color: white; }}
-QCheckBox, QRadioButton, QLabel {{ background: transparent; color: #111111; }}
+QStatusBar {{ background: {t.SURFACE}; color: {t.TEXT_SECONDARY}; border-top: 1px solid {t.BORDER}; }}
+QMenuBar   {{ background: {t.SURFACE}; color: {t.TEXT_PRIMARY}; border-bottom: 1px solid {t.BORDER}; }}
+QMenuBar::item {{ padding: {t.SP_1}px {t.SP_3}px; background: transparent; border-radius: {t.RADIUS_CONTROL}px; }}
+QMenuBar::item:selected {{ background: {t.SURFACE_HOVER}; }}
+QMenu {{ background: {t.SURFACE}; color: {t.TEXT_PRIMARY}; border: 1px solid {t.BORDER}; padding: {t.SP_1}px; }}
+QMenu::item {{ padding: {t.SP_1}px {t.SP_5}px; border-radius: {t.RADIUS_CONTROL}px; }}
+QMenu::item:selected {{ background: {t.SURFACE_HOVER}; color: {t.TEXT_PRIMARY}; }}
+QMenu::separator {{ height: 1px; background: {t.BORDER}; margin: {t.SP_1}px {t.SP_2}px; }}
+QMessageBox {{ background: {t.SURFACE}; }}
 """
 
 
@@ -109,13 +193,15 @@ class MainWindow(QMainWindow):
         self._data_tab = DataInputTab(s)
 
         tabs = QTabWidget()
-        tabs.addTab(self._data_tab,           "Data Input")
-        tabs.addTab(VisualizationTab(s),       "Visualization")
-        tabs.addTab(DetectionTab(s),           "Detection")
-        tabs.addTab(LabelEditTab(s),           "Label Edit")
-        tabs.addTab(MetricsTab(s),             "Metrics")
-        tabs.addTab(SettingsTab(s),            "Settings")
-        tabs.addTab(InfoTab(),                 "Info")
+        tabs.setObjectName("mainTabs")
+        tabs.setDocumentMode(True)
+        tabs.addTab(self._data_tab,       "Data Input")
+        tabs.addTab(VisualizationTab(s),  "Visualization")
+        tabs.addTab(DetectionTab(s),      "Detection")
+        tabs.addTab(LabelEditTab(s),      "Label Edit")
+        tabs.addTab(MetricsTab(s),        "Metrics")
+        tabs.addTab(SettingsTab(s),       "Settings")
+        tabs.addTab(InfoTab(),            "Info")
 
         self.setCentralWidget(tabs)
         self.setStatusBar(QStatusBar())
@@ -150,13 +236,25 @@ class MainWindow(QMainWindow):
 
 
 def main() -> None:
-    # White background for all pyqtgraph plots before any widget is created
-    pg.setConfigOptions(antialias=True, background="w", foreground="k")
-
     app = QApplication(sys.argv)
     app.setApplicationName("Squeak Peek Studio")
     app.setOrganizationName("NUDZ")
-    app.setStyleSheet(_QSS)
+    # Force Qt's cross-platform style: on macOS, native widget styling
+    # (e.g. QComboBox popups rendered as real Cocoa menus) bypasses our
+    # QSS entirely, which looks broken in dark mode. Fusion respects it.
+    app.setStyle(QStyleFactory.create("Fusion"))
+
+    def apply_theme() -> None:
+        # Resolved fresh each call, so it matches the current mode
+        # (user preference, falling back to the OS's light/dark setting).
+        pg.setConfigOptions(antialias=True, background=t.SURFACE, foreground=t.TEXT_PRIMARY)
+        app.setStyleSheet(_build_qss())
+
+    apply_theme()
+    # Re-polish the global stylesheet when the user switches mode from the
+    # Settings tab, or the OS appearance changes while on "System".
+    t.signal.changed.connect(apply_theme)
+    app.styleHints().colorSchemeChanged.connect(lambda _: apply_theme())
 
     state = AppState()
     window = MainWindow(state)

@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from . import _theme as t
 from ._label_io import save_labels
 from ._spectrogram_widget import SpectrogramWidget
 from ._state import AppState
@@ -28,11 +29,12 @@ class LabelEditTab(QWidget):
 
         state.wav_loaded.connect(self._on_labels_changed)
         state.labels_changed.connect(self._on_labels_changed)
+        t.signal.changed.connect(self._on_theme_changed)
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
+        layout.setContentsMargins(t.SP_2, t.SP_2, t.SP_2, t.SP_2)
+        layout.setSpacing(t.SP_2)
 
         self._spec = SpectrogramWidget()
         layout.addWidget(self._spec, stretch=1)
@@ -50,12 +52,12 @@ class LabelEditTab(QWidget):
         ctrl_row = QHBoxLayout(ctrl)
 
         self._prev_btn = QPushButton("◀")
-        self._prev_btn.setFixedWidth(40)
+        self._prev_btn.setFixedWidth(36)
         self._prev_btn.clicked.connect(self._prev)
         ctrl_row.addWidget(self._prev_btn)
 
         self._next_btn = QPushButton("▶")
-        self._next_btn.setFixedWidth(40)
+        self._next_btn.setFixedWidth(36)
         self._next_btn.clicked.connect(self._next)
         ctrl_row.addWidget(self._next_btn)
 
@@ -63,37 +65,45 @@ class LabelEditTab(QWidget):
 
         ctrl_row.addWidget(QLabel("Class:"))
         self._class_combo = QComboBox()
-        self._class_combo.setMinimumWidth(80)
+        self._class_combo.setMinimumWidth(90)
         self._reload_classes()
         ctrl_row.addWidget(self._class_combo)
 
-        self._accept_btn = QPushButton("Accept ✓")
-        self._accept_btn.setStyleSheet(
-            "QPushButton { background: #4DCDD2; color: #111; font-weight: bold; }"
-            "QPushButton:hover { background: #6DDDE2; }"
-        )
-        self._accept_btn.clicked.connect(self._accept)
-        ctrl_row.addWidget(self._accept_btn)
-
-        self._reject_btn = QPushButton("Reject ✗")
-        self._reject_btn.setStyleSheet(
-            "QPushButton { background: #F8C06F; color: #111; font-weight: bold; }"
-            "QPushButton:hover { background: #FAD08F; }"
-        )
+        self._reject_btn = QPushButton("Reject")
+        self._reject_btn.setObjectName("dangerBtn")
         self._reject_btn.clicked.connect(self._reject)
         ctrl_row.addWidget(self._reject_btn)
+
+        self._accept_btn = QPushButton("Accept")
+        self._accept_btn.setObjectName("primaryBtn")
+        self._accept_btn.clicked.connect(self._accept)
+        ctrl_row.addWidget(self._accept_btn)
 
         layout.addWidget(ctrl)
 
         # ── Export ────────────────────────────────────────────────────────
         export_row = QHBoxLayout()
         export_row.addStretch()
-        export_btn = QPushButton("Export Labels…")
+        export_btn = QPushButton("Export labels…")
         export_btn.clicked.connect(self._export)
         export_row.addWidget(export_btn)
         layout.addLayout(export_row)
 
+        self._apply_theme()
+
     # ── Slots ─────────────────────────────────────────────────────────────
+
+    def _apply_theme(self) -> None:
+        self._info_label.setStyleSheet(
+            f"color: {t.TEXT_SECONDARY}; font-family: monospace; font-size: {t.TEXT_XS}px;"
+        )
+        self._counter.setStyleSheet(f"color: {t.TEXT_SECONDARY}; font-size: {t.TEXT_XS}px;")
+
+    def _on_theme_changed(self) -> None:
+        self._apply_theme()
+        self._spec.refresh_theme()
+        if self._state.detected_labels:
+            self._show_current()
 
     def _on_labels_changed(self) -> None:
         self._reload_classes()

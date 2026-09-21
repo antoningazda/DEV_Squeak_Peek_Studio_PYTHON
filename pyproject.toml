@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "squeak-peek-studio"
-version = "1.0.0"
+version = "0.0.6"
 description = "Visualization, segmentation and sonification of ultrasonic rodent vocalizations"
 authors = [{ name = "Antonín Gazda", email = "antonin.gazda@gmail.com" }]
 readme = "README.md"

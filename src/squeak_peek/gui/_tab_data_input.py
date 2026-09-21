@@ -3,6 +3,7 @@ from __future__ import annotations
 from PyQt6.QtWidgets import (
     QFileDialog,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -13,15 +14,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from . import _theme as t
 from ._label_io import load_labels
 from ._state import AppState
-
-_ORANGE_BTN = (
-    "QPushButton { background: #F9C06E; border: 1px solid #E0A850; "
-    "border-radius: 5px; padding: 8px 22px; font-weight: bold; color: #111; }"
-    "QPushButton:hover { background: #FAD080; }"
-    "QPushButton:pressed { background: #E8A840; }"
-)
 
 
 class DataInputTab(QWidget):
@@ -30,28 +25,35 @@ class DataInputTab(QWidget):
         self._state = state
         self._setup_ui()
         state.wav_loaded.connect(self._on_wav_loaded)
+        t.signal.changed.connect(self._apply_theme)
+
+    def _apply_theme(self) -> None:
+        self._desc.setStyleSheet(f"color: {t.TEXT_SECONDARY}; font-size: {t.TEXT_SM}px;")
+        self._info_label.setStyleSheet(f"color: {t.TEXT_SECONDARY}; font-size: {t.TEXT_XS}px;")
 
     def _setup_ui(self) -> None:
         outer = QVBoxLayout(self)
-        outer.setSpacing(16)
-        outer.setContentsMargins(16, 12, 16, 12)
+        outer.setSpacing(t.SP_4)
+        outer.setContentsMargins(t.SP_5, t.SP_4, t.SP_5, t.SP_4)
 
         # ── Description ───────────────────────────────────────────────────
-        desc = QLabel(
-            "<i>Select and load USV audio, reference labels and detected labels "
-            "for further analysis in single or batch mode.</i>"
+        self._desc = QLabel(
+            "Select and load USV audio, reference labels and detected labels "
+            "for further analysis in single or batch mode."
         )
-        desc.setWordWrap(True)
-        outer.addWidget(desc)
+        self._desc.setWordWrap(True)
+        outer.addWidget(self._desc)
 
         # ── File rows ─────────────────────────────────────────────────────
+        files_group = QGroupBox("Input files")
+        files_col = QVBoxLayout(files_group)
         grid = QGridLayout()
-        grid.setSpacing(8)
+        grid.setSpacing(t.SP_2)
         grid.setColumnStretch(1, 1)
 
         def _row(label_text: str, row: int) -> tuple[QPushButton, QLineEdit]:
             btn = QPushButton(label_text)
-            btn.setFixedWidth(230)
+            btn.setFixedWidth(220)
             edit = QLineEdit()
             edit.setReadOnly(True)
             edit.setPlaceholderText("No file selected")
@@ -59,28 +61,30 @@ class DataInputTab(QWidget):
             grid.addWidget(edit, row, 1)
             return btn, edit
 
-        wav_btn,  self._wav_edit  = _row("Select USV (.wav)",             0)
-        ref_btn,  self._ref_edit  = _row("Select Reference Labels (.txt)", 1)
-        det_btn,  self._det_edit  = _row("Select Detected Labels (.txt)",  2)
+        wav_btn,  self._wav_edit  = _row("Select USV (.wav)",              0)
+        ref_btn,  self._ref_edit  = _row("Select reference labels (.txt)", 1)
+        det_btn,  self._det_edit  = _row("Select detected labels (.txt)",  2)
 
         wav_btn.clicked.connect(self._browse_wav)
         ref_btn.clicked.connect(self._browse_reference)
         det_btn.clicked.connect(self._browse_detected)
 
-        outer.addLayout(grid)
+        files_col.addLayout(grid)
+        outer.addWidget(files_group)
 
-        # ── File info label ───────────────────────────────────────────────
+        # ── File info row ─────────────────────────────────────────────────
         self._info_label = QLabel("")
-        self._info_label.setStyleSheet("color: #555555; font-size: 12px;")
+        self._info_label.setWordWrap(True)
+        self._info_label.setVisible(False)
         outer.addWidget(self._info_label)
 
         outer.addStretch()
 
-        # ── Load Files button (bottom-right, orange) ──────────────────────
+        # ── Load Files button (bottom-right, primary action) ──────────────
         bottom_row = QHBoxLayout()
         bottom_row.addStretch()
-        self._load_btn = QPushButton("Load Files")
-        self._load_btn.setStyleSheet(_ORANGE_BTN)
+        self._load_btn = QPushButton("Load files")
+        self._load_btn.setObjectName("primaryBtn")
         self._load_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._load_btn.clicked.connect(self._load_files)
         bottom_row.addWidget(self._load_btn)
@@ -90,6 +94,8 @@ class DataInputTab(QWidget):
         self._pending_wav: str = ""
         self._pending_det: str = ""
         self._pending_ref: str = ""
+
+        self._apply_theme()
 
     # ── Browse handlers ───────────────────────────────────────────────────
 
@@ -163,7 +169,8 @@ class DataInputTab(QWidget):
         det_n = len(s.detected_labels)
         ref_n = len(s.reference_labels)
         self._info_label.setText(
-            f"Duration: {s.duration:.3f} s  |  "
-            f"Sample rate: {s.fs:,} Hz  |  "
-            f"Detected labels: {det_n}  |  Reference labels: {ref_n}"
+            f"Duration: {s.duration:.3f} s   ·   "
+            f"Sample rate: {s.fs:,} Hz   ·   "
+            f"Detected labels: {det_n}   ·   Reference labels: {ref_n}"
         )
+        self._info_label.setVisible(True)

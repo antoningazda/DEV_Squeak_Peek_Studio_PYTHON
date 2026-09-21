@@ -26,6 +26,7 @@ from squeak_peek.detectors.rbd import RBDDetector
 from squeak_peek.labels.io import export_labels_detector
 from squeak_peek.labels.postprocess import merge_close_labels, remove_short_labels
 
+from . import _theme as t
 from ._state import AppState
 
 _DETECTORS = ["PSD", "BSCD", "RBD", "ML"]
@@ -35,11 +36,14 @@ class DetectionTab(QWidget):
     def __init__(self, state: AppState, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._state = state
+        self._status_kind = "neutral"
         self._setup_ui()
+        t.signal.changed.connect(self._apply_theme)
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setSpacing(t.SP_4)
+        layout.setContentsMargins(t.SP_5, t.SP_4, t.SP_5, t.SP_4)
 
         # ── Detector selection ────────────────────────────────────────────
         det_group = QGroupBox("Detector")
@@ -76,16 +80,27 @@ class DetectionTab(QWidget):
         export_row.addWidget(export_btn)
         layout.addWidget(export_group)
 
+        layout.addStretch()
+
         # ── Run ───────────────────────────────────────────────────────────
-        self._run_btn = QPushButton("Run Detector")
-        self._run_btn.setMinimumHeight(40)
+        self._run_btn = QPushButton("Run detector")
+        self._run_btn.setObjectName("primaryBtn")
+        self._run_btn.setMinimumHeight(36)
         self._run_btn.clicked.connect(self._run)
         layout.addWidget(self._run_btn)
 
         self._status = QLabel("")
         layout.addWidget(self._status)
+        self._apply_theme()
 
-        layout.addStretch()
+    def _apply_theme(self) -> None:
+        color = {"neutral": t.TEXT_SECONDARY, "success": t.SUCCESS, "danger": t.DANGER}[self._status_kind]
+        self._status.setStyleSheet(f"color: {color}; font-size: {t.TEXT_XS}px;")
+
+    def _set_status(self, text: str, kind: str) -> None:
+        self._status_kind = kind
+        self._apply_theme()
+        self._status.setText(text)
 
     def _browse_export(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Select export folder")
@@ -111,7 +126,7 @@ class DetectionTab(QWidget):
         detector = self._build_detector(det_name)
 
         self._run_btn.setEnabled(False)
-        self._status.setText(f"Running {det_name}…")
+        self._set_status(f"Running {det_name}…", "neutral")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
         try:
@@ -124,7 +139,7 @@ class DetectionTab(QWidget):
                 labels = remove_short_labels(labels, post.minLabelLength)
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Detection failed", str(exc))
-            self._status.setText("Failed.")
+            self._set_status("Failed.", "danger")
             return
         finally:
             QApplication.restoreOverrideCursor()
@@ -132,7 +147,7 @@ class DetectionTab(QWidget):
 
         self._state.detected_labels = labels
         self._state.labels_changed.emit()
-        self._status.setText(f"{det_name}: {len(labels)} events detected.")
+        self._set_status(f"{det_name}: {len(labels)} events detected.", "success")
 
         export_dir = self._export_edit.text().strip()
         if export_dir and self._state.wav_path is not None:

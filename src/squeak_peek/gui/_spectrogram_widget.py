@@ -8,17 +8,13 @@ from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from squeak_peek.audio.filters import band_restrict, compute_stft
 from squeak_peek.labels.model import Label
 
+from . import _theme as theme
+
 # Reversed grayscale: low power → light gray, high power → dark  (matches MATLAB)
 _GRAY_CM = pg.ColorMap(
     pos=np.array([0.0, 1.0]),
     color=np.array([[210, 210, 210, 255], [15, 15, 15, 255]], dtype=np.uint8),
 )
-
-# Detected labels: bright cyan solid  |  Reference labels: bright orange solid
-_PEN_DET = pg.mkPen("#00CCFF", width=2.0)
-_PEN_REF = pg.mkPen("#FF8800", width=2.0)
-_COL_DET = (0, 204, 255, 255)    # cyan
-_COL_REF = (255, 136, 0, 255)    # orange
 
 
 class SpectrogramWidget(QWidget):
@@ -39,15 +35,12 @@ class SpectrogramWidget(QWidget):
 
         # ── Waveform plot — row 0 (TOP) ───────────────────────────────────
         self._wave_plot: pg.PlotItem = self._glw.addPlot(row=0, col=0)
-        self._wave_plot.setLabel("left", "Amplitude")
         self._wave_plot.showGrid(x=True, y=False, alpha=0.3)
         self._wave_plot.getAxis("bottom").setStyle(showValues=False)
-        self._wave_curve = self._wave_plot.plot(pen=pg.mkPen("#1F77B4", width=1))
+        self._wave_curve = self._wave_plot.plot()
 
         # ── Spectrogram plot — row 1 (BOTTOM) ────────────────────────────
         self._spec_plot: pg.PlotItem = self._glw.addPlot(row=1, col=0)
-        self._spec_plot.setLabel("left", "Frequency (kHz)")
-        self._spec_plot.setLabel("bottom", "Time (s)")
         self._spec_plot.showGrid(x=False, y=True, alpha=0.2)
 
         self._img = pg.ImageItem()
@@ -62,6 +55,29 @@ class SpectrogramWidget(QWidget):
         self._glw.ci.layout.setRowStretchFactor(1, 4)
 
         self._label_items: list = []   # items added to spec or wave plot
+
+        # Resolved here (after QApplication exists) so colors match the
+        # current mode; call again via refresh_theme() if it changes live.
+        self.refresh_theme()
+
+    def refresh_theme(self) -> None:
+        """(Re-)apply theme-dependent colors. Existing label overlays keep
+        their old pens until the next display() call redraws them."""
+        self._pen_det = pg.mkPen(theme.DETECTED_COLOR, width=2.0)
+        self._pen_ref = pg.mkPen(theme.REFERENCE_COLOR, width=2.0)
+        self._col_det = pg.mkColor(theme.DETECTED_COLOR).getRgb()
+        self._col_ref = pg.mkColor(theme.REFERENCE_COLOR).getRgb()
+
+        self._glw.setBackground(theme.SURFACE)
+        label_style = {"color": theme.TEXT_SECONDARY, "font-size": "11px"}
+        self._wave_plot.setLabel("left", "Amplitude", **label_style)
+        self._spec_plot.setLabel("left", "Frequency (kHz)", **label_style)
+        self._spec_plot.setLabel("bottom", "Time (s)", **label_style)
+        for plot in (self._wave_plot, self._spec_plot):
+            for axis in ("left", "bottom"):
+                plot.getAxis(axis).setPen(theme.BORDER_HOVER)
+                plot.getAxis(axis).setTextPen(theme.TEXT_SECONDARY)
+        self._wave_curve.setPen(pg.mkPen(theme.CURVE, width=1))
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -127,9 +143,9 @@ class SpectrogramWidget(QWidget):
         fmin_khz = fmin_hz / 1_000.0
 
         if show_detected and detected_labels:
-            self._draw_labels(detected_labels, t_start, t_end, _PEN_DET, _COL_DET, fmin_khz, fmax_khz)
+            self._draw_labels(detected_labels, t_start, t_end, self._pen_det, self._col_det, fmin_khz, fmax_khz)
         if show_reference and reference_labels:
-            self._draw_labels(reference_labels, t_start, t_end, _PEN_REF, _COL_REF, fmin_khz, fmax_khz)
+            self._draw_labels(reference_labels, t_start, t_end, self._pen_ref, self._col_ref, fmin_khz, fmax_khz)
 
     def clear(self) -> None:
         self._img.clear()

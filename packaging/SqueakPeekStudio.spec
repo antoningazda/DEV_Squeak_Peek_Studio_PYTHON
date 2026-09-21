@@ -61,8 +61,8 @@ if sys.platform == "darwin":
         bundle_identifier="cz.nudz.squeakpeekstudio",
         info_plist={
             "CFBundleName": "Squeak Peek Studio",
-            "CFBundleShortVersionString": "1.0.0",
-            "CFBundleVersion": "1.0.0",
+            "CFBundleShortVersionString": "0.0.6",
+            "CFBundleVersion": "0.0.6",
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "NUDZ",
         },
