@@ -29,6 +29,7 @@ class SettingsTab(QWidget):
         layout = QVBoxLayout(self)
 
         inner = QTabWidget()
+        inner.setObjectName("innerTabs")
         inner.addTab(self._make_viz_tab(), "Visualization")
         inner.addTab(self._make_psd_tab(), "PSD Detector")
         inner.addTab(self._make_post_tab(), "Post-processing")

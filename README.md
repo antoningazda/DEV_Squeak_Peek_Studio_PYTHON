@@ -6,12 +6,14 @@ Python reimplementation of [Squeak Peek Studio](../DEV_Squeak-Peek-Studio), a MA
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Foundation & Infrastructure | ✅ In progress |
-| 2 | Signal Processing & Detection Engines | ⏳ Pending |
-| 3 | ML Feature Extraction & Detector | ⏳ Pending |
-| 4 | Label System & Evaluation | ⏳ Pending |
-| 5 | GUI (PyQt6) | ⏳ Pending |
-| 6 | Testing, Validation & Packaging | ⏳ Pending |
+| 1 | Foundation & Infrastructure | ✅ Done |
+| 2 | Signal Processing & Detection Engines (PSD, BSCD, RBD) | ⏳ Pending — see `PORT_PLAN.md` |
+| 3 | ML Feature Extraction & Detector | ⏳ Pending — see `PORT_PLAN.md` |
+| 4 | Label System & Evaluation | ⏳ Pending — see `PORT_PLAN.md` |
+| 5 | GUI (PyQt6) | 🟡 Shell built (7 tabs, spectrogram view, label edit/export); not yet wired to Phase 2–4 |
+| 6 | Testing, Validation & Packaging | 🟡 CI configured; detector/ML/label test coverage pending Phases 2–4 |
+
+See `PORT_PLAN.md` for the detailed work breakdown for Phases 2–4.
 
 ## Requirements
 

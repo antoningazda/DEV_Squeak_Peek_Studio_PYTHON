@@ -42,12 +42,12 @@ QTabWidget#mainTabs QTabBar::tab:selected {{
 QTabWidget#mainTabs QTabBar::tab:hover:!selected {{ background: #D8F4F6; }}
 QTabWidget#mainTabs::pane {{ border: none; background: white; }}
 
-/* ── Inner tab bars (e.g. Settings sub-tabs) ─────────────────────────── */
-QTabWidget:not(#mainTabs) QTabBar::tab {{
+/* ── Inner tab bars (Settings sub-tabs — named "innerTabs") ──────────── */
+QTabWidget#innerTabs QTabBar::tab {{
     background: #EEEEEE; color: #111; padding: 5px 14px;
     margin: 1px; border-radius: 3px;
 }}
-QTabWidget:not(#mainTabs) QTabBar::tab:selected {{
+QTabWidget#innerTabs QTabBar::tab:selected {{
     background: {_TEAL}; color: white;
 }}
 

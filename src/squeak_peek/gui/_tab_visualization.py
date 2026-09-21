@@ -98,6 +98,13 @@ class VisualizationTab(QWidget):
             self._start_spin.setValue(new_start)
 
     def _refresh(self) -> None:
+        try:
+            self._refresh_inner()
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+
+    def _refresh_inner(self) -> None:
         s = self._state
         if s.samples is None:
             return

@@ -1,0 +1,106 @@
+{
+  "DataInput": {
+    "DefaultUSVFieldSingle": "data/example/single/USV_Example_Short.wav",
+    "DefaultLabelFieldSingle": "data/example/single/Detected_Labels_Example.txt",
+    "DefaultReferenceLabelFieldSingle": "data/example/single/Reference_Labels_Example.txt",
+    "BatchMode": false,
+    "DefaultUSVFieldBatch": "data/example/batch/USVs",
+    "DefaultLabelFieldBatch": "data/example/batch/labels",
+    "DefaultReferenceLabelFieldBatch": "data/example/batch/referenceLabels"
+  },
+  "Visualization": {
+    "ShowLoadingDialog": false,
+    "SegmentStartSeconds": 0.0,
+    "SegmentLengthSeconds": 1.0,
+    "SpectrogramWindow": 1024,
+    "SpectrogramOverlap": 512,
+    "SpectrogramMinFrequency": 40,
+    "SpectrogramMaxFrequency": 120,
+    "SpectrogramColormap": "parula",
+    "ShowReferenceLabels": true,
+    "ShowLabels": true,
+    "ReferenceLabelColor": "white",
+    "LabelColor": "cyan",
+    "ManualLabelLength": 0.075,
+    "SonificationST": -35,
+    "SonificationSlowdown": 4
+  },
+  "LabelEdit": {
+    "SpectrogramWindow": 1024,
+    "SpectrogramOverlap": 512,
+    "SpectrogramMinFrequency": 40,
+    "SpectrogramMaxFrequency": 120,
+    "SpectrogramColormap": "hsv",
+    "Classifications": "d,sk,5,5t,5w,c5"
+  },
+  "Detection": {
+    "ExportPath": "data/export",
+    "PSD": {
+      "fcutMin": 40000,
+      "fcutMax": 120000,
+      "ROIstart": 60,
+      "ROIlength": 10,
+      "runWholeSignal": true,
+      "segmentLength": 8192,
+      "overlapFactor": 0.59,
+      "maWindow": 3,
+      "noiseWindow": 240,
+      "localWindow": 194,
+      "k": 0.023,
+      "w": 0.994,
+      "minEffectivePower": 8.5e-05
+    },
+    "BSCD": {
+      "fcutMin": 40000,
+      "fcutMax": 120000,
+      "wlen": 0.01,
+      "maWindow": 5000,
+      "noiseWindow": 256,
+      "localWindow": 256,
+      "k": 0.023,
+      "w": 0.994
+    },
+    "RBD": {
+      "fcutMin": 40000,
+      "fcutMax": 120000,
+      "wlen": 0.04,
+      "AR_order_left": 4,
+      "AR_order_right": 4,
+      "Bayesian_Evidence_order": 4,
+      "dynamicScaling": 0.3,
+      "smoothingWindowRBD": 0.02,
+      "smoothingWindowThr": 0.02,
+      "amplitudeThreshold": 0.02
+    },
+    "POST": {
+      "maxGapToMerge": 0.005,
+      "minLabelLength": 0.001
+    },
+    "ML": {
+      "modelPath": "",
+      "minEventDuration": 0.003
+    }
+  },
+  "Theme": {
+    "Background": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "Text": [
+      0.05,
+      0.05,
+      0.05
+    ],
+    "Primary": [
+      0.49,
+      0.808,
+      0.824
+    ],
+    "Accent": [
+      0.976,
+      0.753,
+      0.431
+    ]
+  }
+}

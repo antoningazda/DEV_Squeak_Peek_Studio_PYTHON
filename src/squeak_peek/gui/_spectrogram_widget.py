@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import QRectF, Qt
+from PyQt6.QtCore import QRectF
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from squeak_peek.audio.filters import band_restrict, compute_stft
@@ -14,9 +14,11 @@ _GRAY_CM = pg.ColorMap(
     color=np.array([[210, 210, 210, 255], [15, 15, 15, 255]], dtype=np.uint8),
 )
 
-# Detected labels: cyan dashed  |  Reference labels: orange dashed
-_PEN_DET = pg.mkPen("#4CC8CC", width=1.5, style=Qt.PenStyle.DashLine)
-_PEN_REF = pg.mkPen("#F9A030", width=1.5, style=Qt.PenStyle.DashLine)
+# Detected labels: bright cyan solid  |  Reference labels: bright orange solid
+_PEN_DET = pg.mkPen("#00CCFF", width=2.0)
+_PEN_REF = pg.mkPen("#FF8800", width=2.0)
+_COL_DET = (0, 204, 255, 255)    # cyan
+_COL_REF = (255, 136, 0, 255)    # orange
 
 
 class SpectrogramWidget(QWidget):
@@ -59,7 +61,7 @@ class SpectrogramWidget(QWidget):
         self._glw.ci.layout.setRowStretchFactor(0, 1)
         self._glw.ci.layout.setRowStretchFactor(1, 4)
 
-        self._label_items: list[pg.InfiniteLine] = []
+        self._label_items: list = []   # items added to spec or wave plot
 
     # ── Public API ────────────────────────────────────────────────────────
 
@@ -85,6 +87,7 @@ class SpectrogramWidget(QWidget):
             return
 
         # ── Spectrogram ───────────────────────────────────────────────────
+        noverlap = min(noverlap, nperseg - 1)
         overlap_factor = noverlap / nperseg
         f, t_rel, Sxx_db = compute_stft(chunk, fs, nperseg, overlap_factor)
         f_sub, Sxx_sub = band_restrict(f, Sxx_db, fmin_hz, fmax_hz)
@@ -118,37 +121,70 @@ class SpectrogramWidget(QWidget):
         self._wave_curve.setData(t_wave[::step], chunk[::step])
         self._wave_plot.setRange(xRange=[t_start, t_end], padding=0.0)
 
-        # ── Label overlays (dashed vertical lines) ────────────────────────
-        for item in self._label_items:
-            self._spec_plot.removeItem(item)
-        self._label_items.clear()
+        # ── Label overlays ────────────────────────────────────────────────
+        self._clear_labels()
+        fmax_khz = fmax_hz / 1_000.0
+        fmin_khz = fmin_hz / 1_000.0
 
         if show_detected and detected_labels:
-            self._draw_label_lines(detected_labels, t_start, t_end, _PEN_DET)
+            self._draw_labels(detected_labels, t_start, t_end, _PEN_DET, _COL_DET, fmin_khz, fmax_khz)
         if show_reference and reference_labels:
-            self._draw_label_lines(reference_labels, t_start, t_end, _PEN_REF)
+            self._draw_labels(reference_labels, t_start, t_end, _PEN_REF, _COL_REF, fmin_khz, fmax_khz)
 
     def clear(self) -> None:
         self._img.clear()
         self._wave_curve.setData([], [])
-        for item in self._label_items:
-            self._spec_plot.removeItem(item)
-        self._label_items.clear()
+        self._clear_labels()
 
     # ── Private ───────────────────────────────────────────────────────────
 
-    def _draw_label_lines(
+    def _clear_labels(self) -> None:
+        for plot, item in self._label_items:
+            plot.removeItem(item)
+        self._label_items.clear()
+
+    def _draw_labels(
         self,
         labels: list[Label],
         t_start: float,
         t_end: float,
         pen: object,
+        color: tuple,
+        fmin_khz: float,
+        fmax_khz: float,
     ) -> None:
-        """Draw a pair of dashed vertical lines for each label in view."""
+        """Draw start/end lines + text for each label visible in the segment."""
+        text_y = fmax_khz - (fmax_khz - fmin_khz) * 0.04  # just inside top edge
+
         for lbl in labels:
             if lbl.end_time < t_start or lbl.start_time > t_end:
                 continue
+
+            # Vertical lines at start and end on spectrogram
             for t in (lbl.start_time, lbl.end_time):
                 line = pg.InfiniteLine(pos=t, angle=90, pen=pen, movable=False)
                 self._spec_plot.addItem(line)
-                self._label_items.append(line)
+                self._label_items.append((self._spec_plot, line))
+
+            # Horizontal tick at the top connecting start → end
+            top_line = pg.PlotDataItem(
+                [lbl.start_time, lbl.end_time],
+                [fmax_khz * 0.995, fmax_khz * 0.995],
+                pen=pen,
+            )
+            self._spec_plot.addItem(top_line)
+            self._label_items.append((self._spec_plot, top_line))
+
+            # Text label
+            label_text = lbl.label if lbl.label else ""
+            if label_text:
+                txt = pg.TextItem(text=label_text, color=color, anchor=(0.0, 1.0))
+                txt.setPos(lbl.start_time, text_y)
+                self._spec_plot.addItem(txt)
+                self._label_items.append((self._spec_plot, txt))
+
+            # Thin lines on waveform plot too
+            for t in (lbl.start_time, lbl.end_time):
+                wline = pg.InfiniteLine(pos=t, angle=90, pen=pen, movable=False)
+                self._wave_plot.addItem(wline)
+                self._label_items.append((self._wave_plot, wline))

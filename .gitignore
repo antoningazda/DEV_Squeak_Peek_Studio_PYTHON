@@ -39,6 +39,7 @@ htmlcov/
 data/models/*.joblib
 data/models/*.pkl
 data/export/
+data/**/*.wav
 
 # PyInstaller
 *.spec
