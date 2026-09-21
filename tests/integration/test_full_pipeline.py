@@ -5,7 +5,6 @@ Phase 2–6 will add tests here as each detector and pipeline stage lands.
 Phase 1: only a smoke test verifying the project structure is importable.
 """
 
-import pytest
 
 
 def test_package_importable():

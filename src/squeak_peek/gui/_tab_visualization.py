@@ -100,7 +100,7 @@ class VisualizationTab(QWidget):
     def _refresh(self) -> None:
         try:
             self._refresh_inner()
-        except Exception as exc:
+        except Exception:
             import traceback
             traceback.print_exc()
 

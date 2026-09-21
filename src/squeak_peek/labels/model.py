@@ -18,7 +18,7 @@ import it for type hints. I/O and post-processing come in Phase 4.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass

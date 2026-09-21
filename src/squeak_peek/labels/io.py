@@ -127,4 +127,4 @@ def export_labels_detector(path: str | Path, labels: list[Label]) -> None:
             # Line 1: StartTime EndTime d
             fh.write(f"{lbl.start_time:.6f}\t{lbl.end_time:.6f}\td\n")
             # Line 2: \ 0.0 0.0
-            fh.write(f"\\\t0.000000\t0.000000\n")
+            fh.write("\\\t0.000000\t0.000000\n")

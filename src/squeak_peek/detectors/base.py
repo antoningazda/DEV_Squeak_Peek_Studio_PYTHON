@@ -26,7 +26,7 @@ class AbstractDetector(ABC):
         self,
         signal: np.ndarray,
         fs: int,
-    ) -> list["Label"]:
+    ) -> list[Label]:
         """
         Run detection on a mono audio signal.
 

@@ -16,7 +16,6 @@ import pytest
 from squeak_peek.config import BSCDParams
 from squeak_peek.detectors.bscd import BSCDDetector, bscd
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Utilities: plain-numpy reference implementation for correctness validation
 # ─────────────────────────────────────────────────────────────────────────────

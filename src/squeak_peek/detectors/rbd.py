@@ -10,9 +10,9 @@ from __future__ import annotations
 import numpy as np
 from numba import njit
 
-from squeak_peek.labels.model import Label
 from squeak_peek.config import RBDParams
 from squeak_peek.detectors.base import AbstractDetector
+from squeak_peek.labels.model import Label
 
 _EPS = 1e-300
 

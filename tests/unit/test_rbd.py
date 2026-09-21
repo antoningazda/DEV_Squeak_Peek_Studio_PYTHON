@@ -7,10 +7,9 @@ Tests the rbd() algorithm and RBDDetector class with both synthetic and real aud
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-from squeak_peek.detectors.rbd import rbd, RBDDetector
 from squeak_peek.config import RBDParams
+from squeak_peek.detectors.rbd import RBDDetector, rbd
 from squeak_peek.labels.model import Label
 
 
@@ -303,7 +302,7 @@ class TestRBDIntegration:
 
         # Verify output format and validity
         assert isinstance(labels, list)
-        assert all(isinstance(l, Label) for l in labels)
+        assert all(isinstance(lbl, Label) for lbl in labels)
 
         # Verify times are within bounds
         max_time = len(test_slice) / fs

@@ -10,23 +10,17 @@ Covers:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from squeak_peek.config import (
     AppSettings,
     BSCDParams,
-    DetectionSettings,
     LabelEditSettings,
-    MLParams,
-    PSDParams,
     PostProcessParams,
+    PSDParams,
     RBDParams,
     ThemeSettings,
-    VisualizationSettings,
 )
-
 
 # ── Default construction ────────────────────────────────────────────────────
 

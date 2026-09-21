@@ -10,7 +10,6 @@ Tests include:
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from squeak_peek.audio.filters import bandpass_filter_filtfilt, compute_stft
 from squeak_peek.config import PSDParams

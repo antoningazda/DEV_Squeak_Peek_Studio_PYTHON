@@ -7,8 +7,6 @@ Uses numba JIT compilation for the inner per-sample loop to achieve real-time pe
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 from numba import njit
 
@@ -16,7 +14,6 @@ from squeak_peek.audio.filters import bandpass_filter_filtfilt
 from squeak_peek.config import BSCDParams
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.labels.model import Label
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Numba-compiled core: inline 2x2 matrix operations for performance

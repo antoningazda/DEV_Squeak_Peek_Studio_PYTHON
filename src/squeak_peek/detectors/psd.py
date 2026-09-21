@@ -21,7 +21,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.signal import filtfilt as scipy_filtfilt
 
 from squeak_peek.audio.filters import bandpass_filter_filtfilt, compute_stft
 from squeak_peek.detectors.base import AbstractDetector
@@ -55,7 +54,7 @@ class PSDDetector(AbstractDetector):
         self,
         signal: np.ndarray,
         fs: int,
-    ) -> list["Label"]:
+    ) -> list[Label]:
         """
         Detect USV events in the input signal.
 
@@ -88,16 +87,13 @@ class PSDDetector(AbstractDetector):
         # else: if signal is all zeros, leave it as is
 
         # ── ROI (Region of Interest) slicing ──────────────────────────────
-        t_full = np.arange(len(x)) / fs
         if p.runWholeSignal:
             x_roi = x
-            t_roi = t_full
             roi_start_time = 0.0
         else:
             idx1 = int(np.round(p.ROIstart * fs))
             idx2 = int(np.round((p.ROIstart + p.ROIlength) * fs))
             x_roi = x[idx1:idx2]
-            t_roi = t_full[idx1:idx2]
             roi_start_time = p.ROIstart
 
         # ── Bandpass filter (zero-phase, order 12) ───────────────────────

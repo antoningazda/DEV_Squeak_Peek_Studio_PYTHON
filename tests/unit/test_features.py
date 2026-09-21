@@ -12,7 +12,6 @@ Tests include:
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from squeak_peek.features.extract import extract_frame_features
 
