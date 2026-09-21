@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "moduly-webeditor",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/gazda/Documents/Mnau-Labs/modu.ly/modu.ly-webeditor", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}
