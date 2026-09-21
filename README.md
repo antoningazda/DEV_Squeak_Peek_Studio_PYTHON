@@ -10,10 +10,12 @@ Python reimplementation of [Squeak Peek Studio](../DEV_Squeak-Peek-Studio), a MA
 | 2 | Signal Processing & Detection Engines (PSD, BSCD, RBD) | ✅ Detectors ported (Tier 1); see `PORT_PLAN.md` |
 | 3 | ML Feature Extraction & Detector | 🟡 Feature extraction ported (Tier 1); ML detector/training pending (Tier 2) — see `PORT_PLAN.md` |
 | 4 | Label System & Evaluation | ✅ Label I/O, post-processing, metrics ported (Tier 1); see `PORT_PLAN.md` |
-| 5 | GUI (PyQt6) | 🟡 Shell built (7 tabs, spectrogram view, label edit/export); not yet wired to Tier 1 detectors (Tier 3) |
-| 6 | Testing, Validation & Packaging | 🟡 CI configured; Tier 1 has unit test coverage, ML/GUI coverage pending Tier 2–3 |
+| 5 | GUI (PyQt6) | ✅ Detection/Metrics tabs wired to PSD/BSCD/RBD + compare_labels (Tier 3); ML detector option pending Tier 2 |
+| 6 | Testing, Validation & Packaging | 🟡 CI green (3.11/3.12 × macOS/Ubuntu/Windows); Tier 1/3 have unit + CLI test coverage; ML coverage pending Tier 2 |
 
-See `PORT_PLAN.md` for the detailed work breakdown for Tiers 2–3.
+Tiers 1 and 3 of `PORT_PLAN.md` are complete and merged. Tier 2 (ML detector
+inference + training) is the only remaining work — see `PORT_PLAN.md` for
+its breakdown (WP6/WP7).
 
 ## Requirements
 
