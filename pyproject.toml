@@ -16,6 +16,7 @@ dependencies = [
     "numpy>=1.26",
     "scipy>=1.12",
     "pandas>=2.2",
+    "numba>=0.59",               # JIT for per-sample recursive detectors (BSCD/RBD)
 
     # ── Audio ─────────────────────────────────────────────────────────────
     "soundfile>=0.12",          # WAV I/O (250 kHz, float32)

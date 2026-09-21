@@ -7,13 +7,13 @@ Python reimplementation of [Squeak Peek Studio](../DEV_Squeak-Peek-Studio), a MA
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | Foundation & Infrastructure | ✅ Done |
-| 2 | Signal Processing & Detection Engines (PSD, BSCD, RBD) | ⏳ Pending — see `PORT_PLAN.md` |
-| 3 | ML Feature Extraction & Detector | ⏳ Pending — see `PORT_PLAN.md` |
-| 4 | Label System & Evaluation | ⏳ Pending — see `PORT_PLAN.md` |
-| 5 | GUI (PyQt6) | 🟡 Shell built (7 tabs, spectrogram view, label edit/export); not yet wired to Phase 2–4 |
-| 6 | Testing, Validation & Packaging | 🟡 CI configured; detector/ML/label test coverage pending Phases 2–4 |
+| 2 | Signal Processing & Detection Engines (PSD, BSCD, RBD) | ✅ Detectors ported (Tier 1); see `PORT_PLAN.md` |
+| 3 | ML Feature Extraction & Detector | 🟡 Feature extraction ported (Tier 1); ML detector/training pending (Tier 2) — see `PORT_PLAN.md` |
+| 4 | Label System & Evaluation | ✅ Label I/O, post-processing, metrics ported (Tier 1); see `PORT_PLAN.md` |
+| 5 | GUI (PyQt6) | 🟡 Shell built (7 tabs, spectrogram view, label edit/export); not yet wired to Tier 1 detectors (Tier 3) |
+| 6 | Testing, Validation & Packaging | 🟡 CI configured; Tier 1 has unit test coverage, ML/GUI coverage pending Tier 2–3 |
 
-See `PORT_PLAN.md` for the detailed work breakdown for Phases 2–4.
+See `PORT_PLAN.md` for the detailed work breakdown for Tiers 2–3.
 
 ## Requirements
 
