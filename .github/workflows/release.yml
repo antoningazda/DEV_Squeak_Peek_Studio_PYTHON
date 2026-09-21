@@ -68,6 +68,16 @@ jobs:
         working-directory: dist
         run: Compress-Archive -Path SqueakPeekStudio -DestinationPath "../${{ matrix.asset_name }}.zip"
 
+      - name: Build installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}" -replace '^v',''
+          if ($ver -notmatch '^\d+\.\d+\.\d+$') { $ver = "0.0.0" }
+          choco install -y innosetup
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" packaging\installer.iss
+          Move-Item "packaging\installer_output\SqueakPeekStudio-Setup.exe" "${{ matrix.asset_name }}-Setup.exe"
+
       - name: Package artifact (Linux)
         if: runner.os == 'Linux'
         working-directory: dist
@@ -81,6 +91,7 @@ jobs:
             ${{ matrix.asset_name }}.dmg
             ${{ matrix.asset_name }}.zip
             ${{ matrix.asset_name }}.tar.gz
+            ${{ matrix.asset_name }}-Setup.exe
           if-no-files-found: ignore
 
   release:
