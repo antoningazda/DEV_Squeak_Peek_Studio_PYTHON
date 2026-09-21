@@ -78,7 +78,8 @@
     },
     "ML": {
       "modelPath": "",
-      "minEventDuration": 0.003
+      "minEventDuration": 0.003,
+      "sensitivity": 0.5
     }
   },
   "Theme": {

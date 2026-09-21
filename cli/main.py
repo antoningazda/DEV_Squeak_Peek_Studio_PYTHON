@@ -17,6 +17,7 @@ from squeak_peek.audio.io import load_wav
 from squeak_peek.config import AppSettings
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.detectors.bscd import BSCDDetector
+from squeak_peek.detectors.ml import MLDetector
 from squeak_peek.detectors.psd import PSDDetector
 from squeak_peek.detectors.rbd import RBDDetector
 from squeak_peek.labels.io import export_labels_detector, import_labels
@@ -36,10 +37,15 @@ def _build_detector(name: str, settings: AppSettings) -> AbstractDetector:
         return BSCDDetector(det.bscd)
     if name == "rbd":
         return RBDDetector(det.rbd)
-    raise click.ClickException(
-        "The 'ml' detector is not yet implemented (Tier 2 of PORT_PLAN.md). "
-        "Use --detector psd, bscd, or rbd."
-    )
+    if name == "ml":
+        if not det.ml.modelPath:
+            raise click.ClickException(
+                "The 'ml' detector needs a trained model. Train one with "
+                "squeak_peek.ml.train.train_model() and set Detection.ML.modelPath "
+                "in your settings JSON, or pass --settings pointing at one that does."
+            )
+        return MLDetector(det.ml)
+    raise click.ClickException(f"Unknown detector: {name!r}")
 
 
 def _postprocess(labels: list[Label], settings: AppSettings) -> list[Label]:
@@ -151,6 +157,42 @@ def evaluate(detected: Path, reference: Path) -> None:
     click.echo(f"  Precision: {stats.precision:.3f}")
     click.echo(f"  Recall:    {stats.recall:.3f}")
     click.echo(f"  F1 Score:  {stats.f1_score:.3f}")
+
+
+@cli.command()
+@click.argument("wav_paths", nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option(
+    "--labels", "-l", "label_paths", multiple=True, required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Label file for each WAV, same order and count as WAV_PATHS.",
+)
+@click.option(
+    "--output", "-o", type=click.Path(path_type=Path),
+    default=Path("data/models/ml_detector_model.joblib"), show_default=True,
+    help="Where to save the trained model (.joblib).",
+)
+@click.option("--noise-ratio", default=3.0, show_default=True, type=float, help="Noise:USV frame ratio for class balancing.")
+@click.option("--n-trees", default=200, show_default=True, type=int, help="Random forest tree count.")
+def train(wav_paths: tuple[Path, ...], label_paths: tuple[Path, ...], output: Path, noise_ratio: float, n_trees: int) -> None:
+    """Train an ML detector model from WAV + label file pairs."""
+    from squeak_peek.ml.train import save_model, train_model
+
+    if len(wav_paths) != len(label_paths):
+        raise click.ClickException(
+            f"Got {len(wav_paths)} WAV_PATHS but {len(label_paths)} --labels options; "
+            "pass one --labels per WAV, in the same order."
+        )
+
+    model_dict = train_model(list(zip(wav_paths, label_paths)), noise_ratio=noise_ratio, n_trees=n_trees)
+    save_model(model_dict, output)
+
+    info = model_dict["training_info"]
+    click.echo(
+        f"Trained on {info['n_frames_trained']} frames "
+        f"({info['n_usv_total']} USV / {info['n_noise_total']} noise available)"
+    )
+    click.echo(f"OOB accuracy: {info['oob_accuracy']:.3f}")
+    click.echo(f"Saved model: {output}")
 
 
 if __name__ == "__main__":
