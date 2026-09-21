@@ -59,8 +59,11 @@ squeak-peek     = "squeak_peek.gui.app:main"
 squeak-peek-cli = "cli.main:cli"
 
 # ── Setuptools source layout ───────────────────────────────────────────────
+# squeak_peek lives under src/ (src layout); cli is a separate top-level
+# package (the squeak-peek-cli console script) — merge both package roots.
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]
+include = ["squeak_peek*", "cli*"]
 
 # ── Pytest ────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]

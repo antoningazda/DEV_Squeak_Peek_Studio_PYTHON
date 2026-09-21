@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from squeak_peek.labels.model import Label
+from squeak_peek.labels.metrics import compare_labels
 
 from ._state import AppState
 
@@ -74,37 +74,11 @@ class MetricsTab(QWidget):
             )
             return
 
-        tp, fp, fn = _iou_metrics(det, ref)
-        prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        rec  = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        f1   = 2 * prec * rec / (prec + rec) if (prec + rec) > 0 else 0.0
+        stats = compare_labels(det, ref)
 
-        self._tp.setText(str(tp))
-        self._fp.setText(str(fp))
-        self._fn.setText(str(fn))
-        self._prec.setText(f"{prec:.3f}")
-        self._rec.setText(f"{rec:.3f}")
-        self._f1.setText(f"{f1:.3f}")
-
-
-def _iou_metrics(
-    detected: list[Label],
-    reference: list[Label],
-    min_iou: float = 0.5,
-) -> tuple[int, int, int]:
-    """Return (TP, FP, FN) using IoU overlap criterion."""
-    matched: set[int] = set()
-    tp = 0
-    for d in detected:
-        for i, r in enumerate(reference):
-            if i in matched:
-                continue
-            overlap = min(d.end_time, r.end_time) - max(d.start_time, r.start_time)
-            union   = max(d.end_time, r.end_time) - min(d.start_time, r.start_time)
-            if union > 0 and overlap / union >= min_iou:
-                tp += 1
-                matched.add(i)
-                break
-    fp = len(detected) - tp
-    fn = len(reference) - tp
-    return tp, fp, fn
+        self._tp.setText(str(stats.true_positives))
+        self._fp.setText(str(stats.false_positives))
+        self._fn.setText(str(stats.false_negatives))
+        self._prec.setText(f"{stats.precision:.3f}")
+        self._rec.setText(f"{stats.recall:.3f}")
+        self._f1.setText(f"{stats.f1_score:.3f}")
