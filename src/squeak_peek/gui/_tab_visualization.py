@@ -102,6 +102,11 @@ class VisualizationTab(QWidget):
         self._ref_cb.stateChanged.connect(self._refresh)
         nav_row.addWidget(self._ref_cb)
 
+        self._pitch_cb = QCheckBox("Pitch trace")
+        self._pitch_cb.setChecked(True)
+        self._pitch_cb.stateChanged.connect(self._refresh)
+        nav_row.addWidget(self._pitch_cb)
+
         layout.addWidget(nav)
 
         # Connect right-click on spectrogram to manual label creation
@@ -314,6 +319,7 @@ class VisualizationTab(QWidget):
             reference_labels=s.reference_labels,
             show_detected=self._det_cb.isChecked(),
             show_reference=self._ref_cb.isChecked(),
+            show_pitch=self._pitch_cb.isChecked(),
             colormap_name=vis.colormap,
             detected_color_name=vis.label_color,
             reference_color_name=vis.reference_label_color,
