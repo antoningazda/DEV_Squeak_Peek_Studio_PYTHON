@@ -31,6 +31,7 @@ class MetricsTab(QWidget):
 
         # ── Counts ────────────────────────────────────────────────────────
         counts_group = QGroupBox("Label counts")
+        counts_group.setToolTip("How many labels are currently loaded, from the Data Input tab.")
         counts_form = QFormLayout(counts_group)
         self._det_count = QLabel("—")
         self._ref_count = QLabel("—")
@@ -40,13 +41,22 @@ class MetricsTab(QWidget):
 
         # ── Metrics ───────────────────────────────────────────────────────
         metrics_group = QGroupBox("Detection metrics (requires reference labels)")
+        metrics_group.setToolTip(
+            "Detected labels are matched against reference (ground-truth) labels by time overlap."
+        )
         metrics_form = QFormLayout(metrics_group)
         self._tp = QLabel("—")
+        self._tp.setToolTip("Detected labels that correctly match a reference label.")
         self._fp = QLabel("—")
+        self._fp.setToolTip("Detected labels with no matching reference label — likely false alarms.")
         self._fn = QLabel("—")
+        self._fn.setToolTip("Reference labels with no matching detection — likely missed calls.")
         self._prec = QLabel("—")
+        self._prec.setToolTip("True positives / (true positives + false positives) — of the detections made, the fraction that were correct.")
         self._rec = QLabel("—")
+        self._rec.setToolTip("True positives / (true positives + false negatives) — of the real calls, the fraction that were found.")
         self._f1 = QLabel("—")
+        self._f1.setToolTip("Harmonic mean of precision and recall — a single balanced accuracy score.")
         metrics_form.addRow("True positives:", self._tp)
         metrics_form.addRow("False positives:", self._fp)
         metrics_form.addRow("False negatives:", self._fn)
@@ -58,6 +68,9 @@ class MetricsTab(QWidget):
         layout.addStretch()
 
         self._compute_btn = QPushButton("Compute metrics")
+        self._compute_btn.setToolTip(
+            "Compare the currently loaded detected labels against the reference labels."
+        )
         self._compute_btn.setObjectName("primaryBtn")
         self._compute_btn.setMinimumHeight(32)
         self._compute_btn.clicked.connect(self._compute)
