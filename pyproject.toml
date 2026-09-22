@@ -32,9 +32,12 @@ dependencies = [
     "pydantic-settings>=2.2",
 
     # ── GUI ───────────────────────────────────────────────────────────────
-    "PyQt6>=6.6,<6.8",        # 6.8+ breaks cocoa plugin on macOS 26
+    "PyQt6>=6.6,<6.8",        # 6.8+ breaks cocoa plugin on macOS 26 (QtMultimedia is bundled in)
     "pyqtgraph>=0.13",          # GPU-accelerated spectrogram
     "matplotlib>=3.8",          # Standard colormaps (parula, turbo already hardcoded)
+
+    # ── Video (import / sync / export) ──────────────────────────────────────
+    "imageio-ffmpeg>=0.5",      # bundled static ffmpeg binary — audio extraction + muxing
 
     # ── Hyperparameter optimisation ───────────────────────────────────────
     "optuna>=3.5",

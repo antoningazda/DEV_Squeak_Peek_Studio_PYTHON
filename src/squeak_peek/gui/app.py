@@ -21,6 +21,7 @@ from ._tab_info import InfoTab
 from ._tab_label_edit import LabelEditTab
 from ._tab_metrics import MetricsTab
 from ._tab_settings import SettingsTab
+from ._tab_video import VideoTab
 from ._tab_visualization import VisualizationTab
 
 logger = logging.getLogger(__name__)
@@ -203,6 +204,7 @@ class MainWindow(QMainWindow):
         self._detection_tab.set_data_input_tab(self._data_tab)
         self._visualization_tab = VisualizationTab(s)
         self._label_edit_tab = LabelEditTab(s)
+        self._video_tab = VideoTab(s)
 
         self._tabs = QTabWidget()
         self._tabs.setObjectName("mainTabs")
@@ -211,6 +213,7 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(self._visualization_tab,  "Visualization")
         self._tabs.addTab(self._detection_tab,  "Detection")
         self._tabs.addTab(self._label_edit_tab,      "Label Edit")
+        self._tabs.addTab(self._video_tab,      "Video")
         self._tabs.addTab(MetricsTab(s),        "Metrics")
         self._tabs.addTab(SettingsTab(s),       "Settings")
         self._tabs.addTab(InfoTab(),            "Info")

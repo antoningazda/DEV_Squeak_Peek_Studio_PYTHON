@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from squeak_peek.audio.sonify import sonify_segment
+from squeak_peek.audio.sonify import sonify_full_track, sonify_segment
 
 
 class TestSonifySegmentBasics:
@@ -360,3 +360,34 @@ class TestSonifySegmentInputValidation:
 
         # Should gracefully handle by clamping to audio bounds
         assert np.all(np.isfinite(result))
+
+
+class TestSonifyFullTrack:
+    """sonify_full_track must preserve real-world duration (no time-stretch),
+    unlike sonify_segment — it stays locked to a real-time clock (video)."""
+
+    def test_duration_preserved(self):
+        fs = 250000
+        duration = 0.5
+        n_samples = int(fs * duration)
+        t = np.arange(n_samples) / fs
+        audio = (0.3 * np.sin(2 * np.pi * 60000 * t)).astype(np.float32)
+
+        target_fs = 48000
+        out, out_fs = sonify_full_track(audio, fs, semitones=-35, target_fs=target_fs)
+
+        assert out_fs == target_fs
+        out_duration = len(out) / out_fs
+        in_duration = len(audio) / fs
+        assert abs(out_duration - in_duration) < 0.005  # within 5ms over 0.5s
+
+    def test_output_finite_and_normalized(self):
+        fs = 250000
+        n_samples = int(fs * 0.3)
+        rng = np.random.default_rng(0)
+        audio = (rng.standard_normal(n_samples) * 0.1).astype(np.float32)
+
+        out, out_fs = sonify_full_track(audio, fs, semitones=-35)
+
+        assert np.all(np.isfinite(out))
+        assert np.max(np.abs(out)) <= 1.0 + 1e-6

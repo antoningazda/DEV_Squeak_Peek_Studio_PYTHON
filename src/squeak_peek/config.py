@@ -149,6 +149,33 @@ class LabelEditSettings(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Section: Video
+# ═══════════════════════════════════════════════════════════════════════════
+
+class VideoSettings(BaseModel):
+    """Mirrors the 'Video' section of default.json — sync-click detection
+    used when no 'sk' label is available to align a video's timeline."""
+
+    snap_band_min_hz: float = Field(
+        alias="SnapBandMinHz", default=2_000,
+        description="Lower bound (Hz) of the band searched for a finger-snap "
+        "transient in the video's own audio track.",
+    )
+    snap_band_max_hz: float = Field(
+        alias="SnapBandMaxHz", default=20_000,
+        description="Upper bound (Hz) of the band searched for a finger-snap "
+        "transient in the video's own audio track.",
+    )
+    snap_threshold_factor: float = Field(
+        alias="SnapThresholdFactor", default=8.0,
+        description="How many times the noise-floor energy a window must "
+        "exceed to be flagged as the snap transient.",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Detector-specific parameter blocks
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -258,6 +285,9 @@ class AppSettings(BaseModel):
     )
     detection: DetectionSettings = Field(
         alias="Detection", default_factory=DetectionSettings
+    )
+    video: VideoSettings = Field(
+        alias="Video", default_factory=VideoSettings
     )
 
     model_config = {"populate_by_name": True}

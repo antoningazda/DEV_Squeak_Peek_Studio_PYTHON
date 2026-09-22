@@ -204,3 +204,57 @@ def sonify_segment(
     signal_out = y_out / (np.max(np.abs(y_out)) + np.finfo(float).eps)
 
     return signal_out
+
+
+def sonify_full_track(
+    audio: np.ndarray,
+    fs: int,
+    semitones: float,
+    target_fs: int = 48_000,
+) -> tuple[np.ndarray, int]:
+    """
+    Pitch-shift an entire recording down into the audible range, preserving
+    its real-world duration — unlike :func:`sonify_segment`, this applies
+    no time-stretch, so the output stays locked to a real-time clock (e.g.
+    a video being played back alongside it).
+
+    Uses librosa's duration-preserving pitch shift (phase vocoder + resample
+    back to the original length) rather than the manual two-pass phase
+    vocoder in :func:`sonify_segment`, since that one deliberately also
+    time-stretches. The result is then resampled from the analysis rate
+    *fs* (e.g. 250 kHz) down to *target_fs* — a true resample, so playing
+    it back at *target_fs* reproduces the same real-world duration as
+    *audio* at *fs*.
+
+    Parameters
+    ----------
+    audio : np.ndarray
+        Raw audio samples (1-D float array), full recording.
+    fs : int
+        Sample rate in Hz of *audio*.
+    semitones : float
+        Pitch shift in semitones (e.g. -35 to bring ultrasonic calls
+        down into human hearing range).
+    target_fs : int
+        Sample rate of the returned track (default 48 kHz).
+
+    Returns
+    -------
+    (sonified, target_fs) : tuple[np.ndarray, int]
+        Pitch-shifted audio at *target_fs*, with
+        ``len(sonified) / target_fs == len(audio) / fs`` (real duration
+        preserved).
+    """
+    import librosa
+
+    from squeak_peek.audio.filters import bandpass_filter_filtfilt
+
+    x = bandpass_filter_filtfilt(audio.astype(np.float32), fs, 40_000, min(120_000, fs / 2 - 1))
+    shifted = librosa.effects.pitch_shift(y=x, sr=fs, n_steps=semitones)
+    resampled = librosa.resample(shifted, orig_sr=fs, target_sr=target_fs)
+
+    peak = np.max(np.abs(resampled))
+    if peak > 0:
+        resampled = resampled / (peak + np.finfo(float).eps)
+
+    return resampled.astype(np.float32), target_fs
