@@ -191,13 +191,15 @@ class MainWindow(QMainWindow):
         s = self._state
 
         self._data_tab = DataInputTab(s)
+        self._detection_tab = DetectionTab(s)
+        self._detection_tab.set_data_input_tab(self._data_tab)
 
         tabs = QTabWidget()
         tabs.setObjectName("mainTabs")
         tabs.setDocumentMode(True)
         tabs.addTab(self._data_tab,       "Data Input")
         tabs.addTab(VisualizationTab(s),  "Visualization")
-        tabs.addTab(DetectionTab(s),      "Detection")
+        tabs.addTab(self._detection_tab,  "Detection")
         tabs.addTab(LabelEditTab(s),      "Label Edit")
         tabs.addTab(MetricsTab(s),        "Metrics")
         tabs.addTab(SettingsTab(s),       "Settings")

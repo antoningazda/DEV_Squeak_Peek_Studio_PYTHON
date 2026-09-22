@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtWidgets import (
     QFileDialog,
     QGridLayout,
@@ -9,6 +11,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -23,6 +26,13 @@ class DataInputTab(QWidget):
     def __init__(self, state: AppState, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._state = state
+
+        # Runtime attributes for batch mode
+        self.batch_mode = False
+        self.batch_usv_dir = ""
+        self.batch_labels_dir = ""
+        self.batch_reference_labels_dir = ""
+
         self._setup_ui()
         state.wav_loaded.connect(self._on_wav_loaded)
         t.signal.changed.connect(self._apply_theme)
@@ -44,12 +54,25 @@ class DataInputTab(QWidget):
         self._desc.setWordWrap(True)
         outer.addWidget(self._desc)
 
-        # ── File rows ─────────────────────────────────────────────────────
-        files_group = QGroupBox("Input files")
-        files_col = QVBoxLayout(files_group)
-        grid = QGridLayout()
-        grid.setSpacing(t.SP_2)
-        grid.setColumnStretch(1, 1)
+        # ── Mode toggle (Single/Batch) ────────────────────────────────────
+        mode_group = QGroupBox("Mode")
+        mode_layout = QHBoxLayout(mode_group)
+        self._single_mode_rb = QRadioButton("Single file")
+        self._batch_mode_rb = QRadioButton("Batch folder")
+        self._single_mode_rb.setChecked(True)
+        self._single_mode_rb.toggled.connect(self._on_mode_changed)
+        self._batch_mode_rb.toggled.connect(self._on_mode_changed)
+        mode_layout.addWidget(self._single_mode_rb)
+        mode_layout.addWidget(self._batch_mode_rb)
+        mode_layout.addStretch()
+        outer.addWidget(mode_group)
+
+        # ── Single mode panel ─────────────────────────────────────────────
+        self._single_panel = QGroupBox("Input files (single mode)")
+        single_col = QVBoxLayout(self._single_panel)
+        single_grid = QGridLayout()
+        single_grid.setSpacing(t.SP_2)
+        single_grid.setColumnStretch(1, 1)
 
         def _row(label_text: str, row: int) -> tuple[QPushButton, QLineEdit]:
             btn = QPushButton(label_text)
@@ -57,8 +80,8 @@ class DataInputTab(QWidget):
             edit = QLineEdit()
             edit.setReadOnly(True)
             edit.setPlaceholderText("No file selected")
-            grid.addWidget(btn,  row, 0)
-            grid.addWidget(edit, row, 1)
+            single_grid.addWidget(btn,  row, 0)
+            single_grid.addWidget(edit, row, 1)
             return btn, edit
 
         wav_btn,  self._wav_edit  = _row("Select USV (.wav)",              0)
@@ -69,8 +92,40 @@ class DataInputTab(QWidget):
         ref_btn.clicked.connect(self._browse_reference)
         det_btn.clicked.connect(self._browse_detected)
 
-        files_col.addLayout(grid)
-        outer.addWidget(files_group)
+        single_col.addLayout(single_grid)
+        outer.addWidget(self._single_panel)
+
+        # ── Batch mode panel ──────────────────────────────────────────────
+        self._batch_panel = QGroupBox("Input folders (batch mode)")
+        self._batch_panel.setVisible(False)
+        batch_col = QVBoxLayout(self._batch_panel)
+        batch_grid = QGridLayout()
+        batch_grid.setSpacing(t.SP_2)
+        batch_grid.setColumnStretch(1, 1)
+
+        def _batch_row(label_text: str, row: int) -> tuple[QPushButton, QLineEdit, QLabel]:
+            btn = QPushButton(label_text)
+            btn.setFixedWidth(220)
+            edit = QLineEdit()
+            edit.setReadOnly(True)
+            edit.setPlaceholderText("No folder selected")
+            count_label = QLabel("")
+            count_label.setStyleSheet(f"color: {t.TEXT_SECONDARY}; font-size: {t.TEXT_XS}px;")
+            batch_grid.addWidget(btn,  row, 0)
+            batch_grid.addWidget(edit, row, 1)
+            batch_grid.addWidget(count_label, row, 2)
+            return btn, edit, count_label
+
+        usv_btn, self._batch_usv_edit, self._batch_usv_count = _batch_row("Select USV folder", 0)
+        ref_btn_b, self._batch_ref_edit, self._batch_ref_count = _batch_row("Select reference labels folder", 1)
+        det_btn_b, self._batch_det_edit, self._batch_det_count = _batch_row("Select detected labels folder", 2)
+
+        usv_btn.clicked.connect(self._browse_batch_usv)
+        ref_btn_b.clicked.connect(self._browse_batch_reference)
+        det_btn_b.clicked.connect(self._browse_batch_detected)
+
+        batch_col.addLayout(batch_grid)
+        outer.addWidget(self._batch_panel)
 
         # ── File info row ─────────────────────────────────────────────────
         self._info_label = QLabel("")
@@ -97,7 +152,14 @@ class DataInputTab(QWidget):
 
         self._apply_theme()
 
-    # ── Browse handlers ───────────────────────────────────────────────────
+    # ── Mode handling ────────────────────────────────────────────────────
+
+    def _on_mode_changed(self) -> None:
+        self.batch_mode = self._batch_mode_rb.isChecked()
+        self._single_panel.setVisible(not self.batch_mode)
+        self._batch_panel.setVisible(self.batch_mode)
+
+    # ── Browse handlers (single mode) ──────────────────────────────────────
 
     def _browse_wav(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -122,6 +184,51 @@ class DataInputTab(QWidget):
         if path:
             self._ref_edit.setText(path)
             self._pending_ref = path
+
+    # ── Browse handlers (batch mode) ───────────────────────────────────────
+
+    def _browse_batch_usv(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Select USV folder")
+        if path:
+            self._batch_usv_edit.setText(path)
+            self.batch_usv_dir = path
+            self._update_file_count("usv")
+
+    def _browse_batch_detected(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Select detected labels folder")
+        if path:
+            self._batch_det_edit.setText(path)
+            self._update_file_count("detected")
+
+    def _browse_batch_reference(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Select reference labels folder")
+        if path:
+            self._batch_ref_edit.setText(path)
+            self._update_file_count("reference")
+
+    def _update_file_count(self, kind: str) -> None:
+        """Update the file count label for a batch folder."""
+        if kind == "usv":
+            folder = self.batch_usv_dir
+            pattern = "*.wav"
+            label = self._batch_usv_count
+        elif kind == "detected":
+            folder = self._batch_det_edit.text().strip()
+            pattern = "*.txt"
+            label = self._batch_det_count
+        else:  # reference
+            folder = self._batch_ref_edit.text().strip()
+            pattern = "*.txt"
+            label = self._batch_ref_count
+
+        if folder:
+            try:
+                count = len(list(Path(folder).glob(pattern)))
+                label.setText(f"({count} files)")
+            except Exception:
+                label.setText("(error)")
+        else:
+            label.setText("")
 
     # ── Load ──────────────────────────────────────────────────────────────
 
