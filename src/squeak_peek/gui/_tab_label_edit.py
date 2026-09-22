@@ -402,3 +402,68 @@ class LabelEditTab(QWidget):
         if path:
             export_labels(path, labels)
             QMessageBox.information(self, "Exported", f"Saved {len(labels)} labels to:\n{path}")
+
+    # ── Keyboard shortcuts ────────────────────────────────────────────────
+
+    def accept_detection(self) -> None:
+        """Accept detection for the current label (keyboard shortcut handler)."""
+        labels = self._state.detected_labels
+        if not labels or self._idx >= len(labels):
+            return
+        labels[self._idx] = replace(labels[self._idx], detection_state="Accepted")
+        self._state.labels_changed.emit()
+        self._update_counters()
+
+    def reject_detection(self) -> None:
+        """Reject detection for the current label (keyboard shortcut handler)."""
+        labels = self._state.detected_labels
+        if not labels or self._idx >= len(labels):
+            return
+        labels[self._idx] = replace(labels[self._idx], detection_state="Rejected")
+        self._state.labels_changed.emit()
+        self._update_counters()
+
+    def accept_classification(self) -> None:
+        """Accept classification for the current label (keyboard shortcut handler)."""
+        labels = self._state.detected_labels
+        if not labels or self._idx >= len(labels):
+            return
+        labels[self._idx] = replace(labels[self._idx], classification_state="Accepted")
+        self._state.labels_changed.emit()
+        self._update_counters()
+
+    def reject_classification(self) -> None:
+        """Reject classification for the current label (keyboard shortcut handler)."""
+        labels = self._state.detected_labels
+        if not labels or self._idx >= len(labels):
+            return
+        labels[self._idx] = replace(labels[self._idx], classification_state="Rejected")
+        self._state.labels_changed.emit()
+        self._update_counters()
+
+    def accept_both_and_advance(self) -> None:
+        """Accept both detection and classification, then advance to next label (space bar handler)."""
+        labels = self._state.detected_labels
+        if not labels or self._idx >= len(labels):
+            return
+
+        # Set both states to Accepted
+        labels[self._idx] = replace(
+            labels[self._idx],
+            detection_state="Accepted",
+            classification_state="Accepted"
+        )
+        self._state.labels_changed.emit()
+        self._update_counters()
+
+        # Advance to next
+        if self._idx < len(labels) - 1:
+            self._next()
+
+    def move_to_previous_label(self) -> None:
+        """Move to previous label (keyboard shortcut handler)."""
+        self._prev()
+
+    def move_to_next_label(self) -> None:
+        """Move to next label (keyboard shortcut handler)."""
+        self._next()

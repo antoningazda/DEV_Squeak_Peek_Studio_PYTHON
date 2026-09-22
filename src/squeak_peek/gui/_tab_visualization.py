@@ -313,3 +313,13 @@ class VisualizationTab(QWidget):
             detected_color_name=vis.label_color,
             reference_color_name=vis.reference_label_color,
         )
+
+    # ── Keyboard shortcuts ────────────────────────────────────────────────
+
+    def move_to_previous_segment(self) -> None:
+        """Move to previous segment (keyboard shortcut handler)."""
+        self._prev_segment()
+
+    def move_to_next_segment(self) -> None:
+        """Move to next segment (keyboard shortcut handler)."""
+        self._next_segment()

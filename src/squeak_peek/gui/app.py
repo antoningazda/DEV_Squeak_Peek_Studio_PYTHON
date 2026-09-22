@@ -4,11 +4,16 @@ Squeak Peek Studio — PyQt6 main window and application entry point.
 
 from __future__ import annotations
 
+import logging
 import sys
+from pathlib import Path
 
 import pyqtgraph as pg
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction, QKeyEvent
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QStyleFactory, QTabWidget
+
+logger = logging.getLogger(__name__)
 
 from . import _theme as t
 from ._state import AppState
@@ -182,6 +187,9 @@ class MainWindow(QMainWindow):
         self._state = state
         self.setWindowTitle("Squeak Peek Studio")
         self.resize(1280, 800)
+        self._tabs: QTabWidget | None = None
+        self._visualization_tab: VisualizationTab | None = None
+        self._label_edit_tab: LabelEditTab | None = None
         self._build_ui()
         self._build_menu()
 
@@ -193,19 +201,21 @@ class MainWindow(QMainWindow):
         self._data_tab = DataInputTab(s)
         self._detection_tab = DetectionTab(s)
         self._detection_tab.set_data_input_tab(self._data_tab)
+        self._visualization_tab = VisualizationTab(s)
+        self._label_edit_tab = LabelEditTab(s)
 
-        tabs = QTabWidget()
-        tabs.setObjectName("mainTabs")
-        tabs.setDocumentMode(True)
-        tabs.addTab(self._data_tab,       "Data Input")
-        tabs.addTab(VisualizationTab(s),  "Visualization")
-        tabs.addTab(self._detection_tab,  "Detection")
-        tabs.addTab(LabelEditTab(s),      "Label Edit")
-        tabs.addTab(MetricsTab(s),        "Metrics")
-        tabs.addTab(SettingsTab(s),       "Settings")
-        tabs.addTab(InfoTab(),            "Info")
+        self._tabs = QTabWidget()
+        self._tabs.setObjectName("mainTabs")
+        self._tabs.setDocumentMode(True)
+        self._tabs.addTab(self._data_tab,       "Data Input")
+        self._tabs.addTab(self._visualization_tab,  "Visualization")
+        self._tabs.addTab(self._detection_tab,  "Detection")
+        self._tabs.addTab(self._label_edit_tab,      "Label Edit")
+        self._tabs.addTab(MetricsTab(s),        "Metrics")
+        self._tabs.addTab(SettingsTab(s),       "Settings")
+        self._tabs.addTab(InfoTab(),            "Info")
 
-        self.setCentralWidget(tabs)
+        self.setCentralWidget(self._tabs)
         self.setStatusBar(QStatusBar())
 
     def _build_menu(self) -> None:
@@ -236,6 +246,118 @@ class MainWindow(QMainWindow):
             6_000,
         )
 
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Handle global keyboard shortcuts based on active tab."""
+        if event.isAutoRepeat():
+            # Ignore auto-repeat events (key held down)
+            event.ignore()
+            return
+
+        if self._tabs is None:
+            super().keyPressEvent(event)
+            return
+
+        # Get the current tab's title
+        current_tab = self._tabs.currentWidget()
+        tab_title = self._tabs.tabText(self._tabs.indexOf(current_tab))
+        key = event.key()
+        modifiers = event.modifiers()
+
+        # Navigation: Left/Right arrows
+        if key == Qt.Key.Key_Left:
+            if tab_title == "Visualization" and self._visualization_tab:
+                self._visualization_tab.move_to_previous_segment()
+                event.accept()
+            elif tab_title == "Label Edit" and self._label_edit_tab:
+                self._label_edit_tab.move_to_previous_label()
+                event.accept()
+        elif key == Qt.Key.Key_Right:
+            if tab_title == "Visualization" and self._visualization_tab:
+                self._visualization_tab.move_to_next_segment()
+                event.accept()
+            elif tab_title == "Label Edit" and self._label_edit_tab:
+                self._label_edit_tab.move_to_next_label()
+                event.accept()
+
+        # Label Edit tab shortcuts
+        elif tab_title == "Label Edit" and self._label_edit_tab:
+            if key == Qt.Key.Key_C:
+                if modifiers & Qt.KeyboardModifier.ShiftModifier:
+                    self._label_edit_tab.reject_classification()
+                else:
+                    self._label_edit_tab.accept_classification()
+                event.accept()
+            elif key == Qt.Key.Key_D:
+                if modifiers & Qt.KeyboardModifier.ShiftModifier:
+                    self._label_edit_tab.reject_detection()
+                else:
+                    self._label_edit_tab.accept_detection()
+                event.accept()
+            elif key == Qt.Key.Key_Space:
+                self._label_edit_tab.accept_both_and_advance()
+                event.accept()
+
+        if not event.isAccepted():
+            super().keyPressEvent(event)
+
+
+def _autoload_defaults(state: AppState, data_input_tab: DataInputTab) -> None:
+    """Try to load default settings and files on startup.
+
+    This is a convenience feature; failures are logged but do not crash the app.
+    """
+    try:
+        # Find the settings file relative to the package/repo root
+        package_root = Path(__file__).parent.parent.parent  # Up to squeak_peek repo root
+        settings_path = package_root / "settings" / "default.json"
+
+        if not settings_path.exists():
+            return  # No default settings file; use current defaults
+
+        # Load settings from file
+        try:
+            from squeak_peek.config import AppSettings
+            default_settings = AppSettings.from_json(settings_path)
+            state.settings = default_settings
+            state.settings_changed.emit()
+            logger.info(f"Loaded default settings from: {settings_path}")
+        except Exception as e:
+            logger.warning(f"Failed to load default settings: {e}")
+            return
+
+        # Auto-load default files if they exist
+        data_input = default_settings.data_input
+        files_to_load = []
+
+        if data_input.default_usv_single:
+            wav_path = Path(data_input.default_usv_single)
+            if wav_path.exists():
+                data_input_tab._pending_wav = str(wav_path)
+                data_input_tab._wav_edit.setText(str(wav_path))
+                files_to_load.append(f"WAV: {wav_path}")
+
+        if data_input.default_label_single:
+            det_path = Path(data_input.default_label_single)
+            if det_path.exists():
+                data_input_tab._pending_det = str(det_path)
+                data_input_tab._det_edit.setText(str(det_path))
+                files_to_load.append(f"Detected labels: {det_path}")
+
+        if data_input.default_reference_label_single:
+            ref_path = Path(data_input.default_reference_label_single)
+            if ref_path.exists():
+                data_input_tab._pending_ref = str(ref_path)
+                data_input_tab._ref_edit.setText(str(ref_path))
+                files_to_load.append(f"Reference labels: {ref_path}")
+
+        # Load the files
+        if files_to_load:
+            data_input_tab._load_files()
+            logger.info(f"Auto-loaded files: {', '.join(files_to_load)}")
+
+    except Exception as e:
+        logger.warning(f"Startup auto-load failed (non-fatal): {e}")
+
 
 def main() -> None:
     app = QApplication(sys.argv)
@@ -261,5 +383,9 @@ def main() -> None:
     state = AppState()
     window = MainWindow(state)
     window.show()
+
+    # Try to auto-load default settings and files (non-fatal if it fails)
+    if window._data_tab:
+        _autoload_defaults(state, window._data_tab)
 
     sys.exit(app.exec())
