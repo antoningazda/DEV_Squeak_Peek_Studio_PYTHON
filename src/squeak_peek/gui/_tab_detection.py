@@ -27,13 +27,17 @@ from squeak_peek.detectors.ml import MLDetector
 from squeak_peek.detectors.psd import PSDDetector
 from squeak_peek.detectors.rbd import RBDDetector
 from squeak_peek.labels.io import export_labels_detector
-from squeak_peek.labels.postprocess import merge_close_labels, remove_short_labels
+from squeak_peek.labels.postprocess import (
+    filter_broadband_labels,
+    merge_close_labels,
+    remove_short_labels,
+)
 
 from . import _theme as t
 from ._state import AppState
 
-_DETECTORS = ["PSD", "BSCD", "RBD", "ML"]
-_POSTPROCESSING = ["None", "Merge Close Labels", "Remove Short Labels"]
+_DETECTORS = ["PSD", "BSCD", "RBD", "ML", "CNN"]
+_POSTPROCESSING = ["None", "Filter Broadband", "Merge Close Labels", "Remove Short Labels"]
 
 
 class DetectionTab(QWidget):
@@ -136,8 +140,10 @@ class DetectionTab(QWidget):
         for item in self._post_list.selectedItems():
             selected_post.add(item.text())
 
-        # Apply in fixed order: None, Merge, Remove Short
-        post_order = ["None", "Merge Close Labels", "Remove Short Labels"]
+        # Apply in fixed order. Filter Broadband runs before merging: merging
+        # spans the gap between two calls, diluting an otherwise clean
+        # detection's tonality.
+        post_order = ["None", "Filter Broadband", "Merge Close Labels", "Remove Short Labels"]
         post_processing = [p for p in post_order if p in selected_post]
 
         # Determine if batch or single mode
@@ -316,7 +322,14 @@ class DetectionTab(QWidget):
                     for post_name in post_processing:
                         if self._cancel_requested:
                             return
-                        if post_name == "Merge Close Labels":
+                        if post_name == "Filter Broadband":
+                            post = self._state.settings.detection.post
+                            fcut_min, fcut_max = self._detector_band(det_name)
+                            labels = filter_broadband_labels(
+                                labels, samples, fs, post.minTonality or 0.5,
+                                fcut_min=fcut_min, fcut_max=fcut_max,
+                            )
+                        elif post_name == "Merge Close Labels":
                             post = self._state.settings.detection.post
                             labels = merge_close_labels(labels, post.maxGapToMerge)
                         elif post_name == "Remove Short Labels":
@@ -360,6 +373,11 @@ class DetectionTab(QWidget):
         samples, fs = sf.read(path)
         return samples, fs
 
+    def _detector_band(self, det_name: str) -> tuple[float, float]:
+        """The detector's own analysis band, for band-limited post-processing."""
+        params = getattr(self._state.settings.detection, det_name.lower(), None)
+        return getattr(params, "fcutMin", 40_000.0), getattr(params, "fcutMax", 120_000.0)
+
     def _build_detector(self, det_name: str) -> AbstractDetector:
         det = self._state.settings.detection
         if det_name == "PSD":
@@ -368,4 +386,15 @@ class DetectionTab(QWidget):
             return BSCDDetector(det.bscd)
         if det_name == "RBD":
             return RBDDetector(det.rbd)
+        if det_name == "CNN":
+            # Imported lazily: torch/torchvision are the optional 'cnn' extra,
+            # and the rest of the app must still run without them.
+            try:
+                from squeak_peek.detectors.cnn import CNNDetector
+            except ImportError as exc:
+                raise RuntimeError(
+                    "The CNN detector needs torch/torchvision. "
+                    "Install with: pip install squeak-peek-studio[cnn]"
+                ) from exc
+            return CNNDetector(det.cnn)
         return MLDetector(det.ml)
