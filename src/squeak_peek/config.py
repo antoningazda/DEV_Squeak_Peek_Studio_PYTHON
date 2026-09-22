@@ -149,7 +149,14 @@ class LabelEditSettings(BaseModel):
     """Mirrors the 'LabelEdit' section of default.json."""
 
     spectrogram_window: int = Field(alias="SpectrogramWindow", default=4096)
-    spectrogram_overlap: int = Field(alias="SpectrogramOverlap", default=2048)
+    # 93.75% overlap (hop = 256 samples ≈ 1 ms) rather than the 50% overlap
+    # used elsewhere: Label Edit's view is zoomed in tight (one label, small
+    # padding — often under 100 ms wide), so a 4096-sample window at 50%
+    # overlap only produces a dozen or so STFT columns across that span,
+    # rendering as a handful of wide vertical stripes instead of a smooth
+    # spectrogram. The larger window is kept for frequency resolution; the
+    # much smaller hop is what actually fixes the visual blockiness.
+    spectrogram_overlap: int = Field(alias="SpectrogramOverlap", default=3840)
     spectrogram_min_freq_khz: float = Field(alias="SpectrogramMinFrequency", default=40)
     spectrogram_max_freq_khz: float = Field(alias="SpectrogramMaxFrequency", default=120)
     colormap: str = Field(alias="SpectrogramColormap", default="invgray")
