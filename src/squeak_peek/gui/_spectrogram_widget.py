@@ -36,8 +36,23 @@ _GRAY_CM = pg.ColorMap(
     color=np.array([[210, 210, 210, 255], [15, 15, 15, 255]], dtype=np.uint8),
 )
 
-# ── PARULA COLORMAP (256 × 3 RGB, normalized 0–1, MATLAB's standard) ────────────
-_PARULA_LUT = np.array([
+def _resample_lut_to_256(raw: np.ndarray) -> np.ndarray:
+    """Resample an (N, 3) RGB lookup table to exactly (256, 3) via per-channel
+    linear interpolation over its normalized position axis. N < 256 upsamples
+    (the standard, lossless way to get a smooth 256-entry LUT from a coarser
+    sampling of the same underlying curve); N == 256 returns it unchanged."""
+    n = raw.shape[0]
+    if n == 256:
+        return raw.astype(np.float32)
+    src_pos = np.linspace(0.0, 1.0, n)
+    dst_pos = np.linspace(0.0, 1.0, 256)
+    return np.stack(
+        [np.interp(dst_pos, src_pos, raw[:, c]) for c in range(3)], axis=1
+    ).astype(np.float32)
+
+
+# ── PARULA COLORMAP (raw samples, normalized 0–1, MATLAB's standard curve) ──────
+_PARULA_RAW_LUT = np.array([
     [0.2081, 0.1761, 0.5921], [0.2116, 0.1884, 0.6196], [0.2150, 0.2003, 0.6471],
     [0.2185, 0.2121, 0.6745], [0.2219, 0.2238, 0.7020], [0.2254, 0.2355, 0.7294],
     [0.2288, 0.2470, 0.7569], [0.2323, 0.2586, 0.7843], [0.2357, 0.2701, 0.8039],
@@ -109,9 +124,10 @@ _PARULA_LUT = np.array([
     [0.9119, 0.8027, 0.2431], [0.9153, 0.8012, 0.2392], [0.9188, 0.7996, 0.2353],
     [0.9222, 0.7980, 0.2314], [0.9257, 0.7965, 0.2274], [0.9291, 0.7949, 0.2235],
 ], dtype=np.float32)
+_PARULA_LUT = _resample_lut_to_256(_PARULA_RAW_LUT)
 
-# ── TURBO COLORMAP (256 × 3 RGB, normalized 0–1, Google's published LUT) ────────
-_TURBO_LUT = np.array([
+# ── TURBO COLORMAP (raw samples, normalized 0–1, Google's published curve) ──────
+_TURBO_RAW_LUT = np.array([
     [0.18995, 0.07176, 0.23217], [0.19483, 0.08339, 0.26149], [0.19956, 0.09498, 0.29024],
     [0.20415, 0.10652, 0.31844], [0.20860, 0.11802, 0.34607], [0.21291, 0.12947, 0.37314],
     [0.21708, 0.14087, 0.39964], [0.22111, 0.15223, 0.42558], [0.22500, 0.16354, 0.45096],
@@ -153,6 +169,7 @@ _TURBO_LUT = np.array([
     [0.00000, 0.37782, 1.00000], [0.00000, 0.32841, 0.98508], [0.00000, 0.27659, 0.96015],
     [0.00000, 0.22242, 0.93521], [0.00000, 0.16590, 0.91028], [0.00000, 0.10708, 0.88535],
 ], dtype=np.float32)
+_TURBO_LUT = _resample_lut_to_256(_TURBO_RAW_LUT)
 
 
 def _get_color_for_name(color_name: str | None) -> tuple[float, float, float, float] | None:
@@ -195,22 +212,26 @@ def _build_colormap(name: str) -> pg.ColorMap:
     # Special case: invgray is gray reversed
     if name == "invgray":
         try:
-            import matplotlib.cm as cm
-            cmap = cm.get_cmap("gray")
+            import matplotlib
         except ImportError:
-            raise ImportError("matplotlib required for standard colormaps")
+            raise ImportError("matplotlib required for standard colormaps") from None
+        cmap = matplotlib.colormaps["gray"]
         lut = (cmap(np.linspace(0, 1, 256))[:, :3] * 255).astype(np.uint8)
         lut = lut[::-1]  # reverse
         return pg.ColorMap(pos=np.linspace(0, 1, len(lut)), color=lut)
 
-    # Standard matplotlib colormaps
+    # Standard matplotlib colormaps. matplotlib.colormaps is a plain registry
+    # lookup (not matplotlib.cm.get_cmap, removed in matplotlib >= 3.9) and
+    # doesn't touch pyplot or backend resolution, so it's safe to call from a
+    # process that already has a Qt event loop running.
     try:
-        import matplotlib.cm as cm
-        cmap = cm.get_cmap(name)
+        import matplotlib
     except ImportError:
-        raise ImportError("matplotlib required for standard colormaps")
-    except ValueError:
-        raise ValueError(f"Unknown colormap: {name}")
+        raise ImportError("matplotlib required for standard colormaps") from None
+    try:
+        cmap = matplotlib.colormaps[name]
+    except KeyError:
+        raise ValueError(f"Unknown colormap: {name}") from None
 
     # Convert matplotlib colormap to pyqtgraph (256-point LUT, RGB only)
     lut = (cmap(np.linspace(0, 1, 256))[:, :3] * 255).astype(np.uint8)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QPixmap, QDesktopServices
+from PyQt6.QtGui import QDesktopServices, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -168,7 +168,7 @@ class InfoTab(QWidget):
         # Apply theme to buttons
         button_style = (
             f"QPushButton {{"
-            f"  background-color: {t.BG_PRIMARY};"
+            f"  background-color: {t.SURFACE};"
             f"  color: {t.TEXT_PRIMARY};"
             f"  border: 1px solid {t.BORDER};"
             f"  border-radius: 4px;"
@@ -176,7 +176,7 @@ class InfoTab(QWidget):
             f"  font-size: {t.TEXT_SM}px;"
             f"}}"
             f"QPushButton:hover {{"
-            f"  background-color: {t.BG_SECONDARY};"
+            f"  background-color: {t.SURFACE_HOVER};"
             f"}}"
         )
         self._doc_button.setStyleSheet(button_style)

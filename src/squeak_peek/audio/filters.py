@@ -72,7 +72,10 @@ def bandpass_filter_filtfilt(
     fs      : sample rate in Hz
     f_low   : lower cut-off frequency in Hz
     f_high  : upper cut-off frequency in Hz
-    order   : Butterworth filter order (default 12, matching MATLAB PSDDetector)
+    order   : total Butterworth filter order (default 12, matching MATLAB
+              designfilt('bandpassiir', 'FilterOrder', 12, ...) — this is the
+              TOTAL order of the resulting bandpass filter, as MATLAB's
+              FilterOrder means)
 
     Returns
     -------
@@ -80,12 +83,18 @@ def bandpass_filter_filtfilt(
 
     Notes
     -----
-    Uses scipy.signal.sosfiltfilt for zero-phase filtering (forward-backward pass).
+    Uses scipy.signal.sosfiltfilt for zero-phase filtering (forward-backward
+    pass). scipy.signal.butter(N, ..., btype="bandpass") returns a filter of
+    total order 2*N (it composites a lowpass and a highpass prototype), so we
+    pass order // 2 to butter() to get a resulting filter whose TOTAL order
+    matches MATLAB's FilterOrder — passing `order` straight through would
+    silently produce a filter twice as steep as MATLAB's, with a materially
+    different roll-off near the band edges.
     """
     from scipy.signal import butter, sosfiltfilt  # lazy — scipy not always installed
 
     nyq = fs / 2.0
-    sos = butter(order, [f_low / nyq, f_high / nyq], btype="bandpass", output="sos")
+    sos = butter(order // 2, [f_low / nyq, f_high / nyq], btype="bandpass", output="sos")
     filtered = sosfiltfilt(sos, signal)
     return filtered.astype(signal.dtype)
 

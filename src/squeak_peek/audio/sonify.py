@@ -68,10 +68,28 @@ def sonify_segment(
     if win_hop is None:
         win_hop = win_len // 4
 
+    if end_time <= start_time:
+        raise ValueError(
+            f"end_time ({end_time}) must be greater than start_time ({start_time})"
+        )
+
     # === Extract segment ===
     start_idx = max(0, round(start_time * fs))
     end_idx = min(len(audio), round(end_time * fs))
     x = audio[start_idx:end_idx]
+
+    # A zero-phase filtfilt-style filter needs more samples than its padding
+    # length, and a usable STFT needs at least one full analysis window —
+    # whichever is larger sets the real minimum segment length. Fail with a
+    # clear message rather than letting scipy or a negative array dimension
+    # raise an opaque error further down.
+    min_samples = max(win_len, 3 * (12 + 1))  # matches scipy sosfiltfilt's default padlen for a 12th-order SOS
+    if len(x) < min_samples:
+        raise ValueError(
+            f"Segment too short to sonify: {len(x)} samples "
+            f"(need at least {min_samples} for filtering and STFT analysis). "
+            "Choose a longer time range."
+        )
 
     # === Bandpass filter (40–120 kHz, order 12, zero-phase) ===
     from squeak_peek.audio.filters import bandpass_filter_filtfilt

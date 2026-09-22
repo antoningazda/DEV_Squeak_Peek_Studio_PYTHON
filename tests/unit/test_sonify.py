@@ -97,9 +97,14 @@ class TestSonifySegmentBasics:
             segment_norm[:min_len], result[:min_len]
         )[0, 1]
 
-        # Correlation should be > 0.5 for this identity-like case
-        # (not perfect due to windowing, but clearly recognizable)
-        assert correlation > 0.5, (
+        # With semitones=0 and slowdown=1 this is a near-identity STFT
+        # round-trip (analysis -> resample-by-1 -> overlap-add synthesis),
+        # so correlation should be very high, not just "recognizable". This
+        # threshold is tight enough to catch a broken phase reconstruction
+        # (e.g. cumsum'd from the wrong reference frame) — empirically this
+        # case measures ~0.98; 0.5 would let a badly wrong reconstruction
+        # (e.g. accumulated phase drift) pass silently.
+        assert correlation > 0.9, (
             f"Correlation with no-op settings too low: {correlation}"
         )
 

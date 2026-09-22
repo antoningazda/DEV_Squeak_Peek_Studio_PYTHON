@@ -13,8 +13,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QKeyEvent
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QStyleFactory, QTabWidget
 
-logger = logging.getLogger(__name__)
-
 from . import _theme as t
 from ._state import AppState
 from ._tab_data_input import DataInputTab
@@ -24,6 +22,8 @@ from ._tab_label_edit import LabelEditTab
 from ._tab_metrics import MetricsTab
 from ._tab_settings import SettingsTab
 from ._tab_visualization import VisualizationTab
+
+logger = logging.getLogger(__name__)
 
 
 def _build_qss() -> str:

@@ -153,14 +153,20 @@ class VisualizationTab(QWidget):
                 slowdown=vis.sonification_slowdown,
             )
 
-            # Resample to 44100 Hz if needed
+            # Play back the raw samples declaring a fixed 44100 Hz rate —
+            # deliberately NOT a real sample-rate-converting resample.
+            # `sonified` is an array of *sample values* produced at the
+            # analysis rate s.fs (e.g. 250 kHz); MATLAB hands this same
+            # array straight to audioplayer(signal_out, targetFs) without
+            # resampling it. Declaring a playback rate far lower than the
+            # analysis rate is exactly what shifts the ultrasonic content
+            # down into the audible range — a real resample (e.g.
+            # librosa.resample) would reconstruct the waveform and PRESERVE
+            # its (still-ultrasonic) frequency content instead, silently
+            # defeating sonification entirely. Only the pitch-shift/
+            # slowdown parameters inside sonify_segment() and this
+            # deliberate rate mismatch combine to make USV calls audible.
             target_fs = 44100
-            if s.fs != target_fs:
-                # Use librosa resample (already a dependency)
-                import librosa
-                sonified = librosa.resample(
-                    sonified, orig_sr=s.fs, target_sr=target_fs
-                )
 
             # Compute mapping ratio (original duration / stretched output duration)
             dur_out = len(sonified) / target_fs
@@ -194,7 +200,6 @@ class VisualizationTab(QWidget):
                 return
 
             elapsed = time.monotonic() - self._playback_start_time
-            s = self._state
 
             # Check if playback finished
             if elapsed >= self._playback_duration:

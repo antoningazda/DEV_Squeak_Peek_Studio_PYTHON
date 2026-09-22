@@ -228,16 +228,18 @@ class TestBoundaryDrag:
         assert len(second_lines) == 2
         assert second_lines["start"] is not first_lines["start"]
 
-    def test_boundary_dragged_signal(self, widget, qtbot):
+    def test_boundary_dragged_signal(self, widget):
         """boundary_dragged signal should be emitted."""
         widget.enable_boundary_drag(0.01, 0.02, 40, 120)
 
-        with qtbot.waitSignal(widget.boundary_dragged, timeout=100) as blocker:
-            # Manually trigger the signal emission
-            widget._on_boundary_line_moved("start", widget._boundary_lines["start"])
+        received = []
+        widget.boundary_dragged.connect(lambda edge, t: received.append((edge, t)))
 
-        # Verify the signal was emitted
-        assert blocker.signal_emitted
+        # Manually trigger the signal emission
+        widget._on_boundary_line_moved("start", widget._boundary_lines["start"])
+
+        assert received
+        assert received[0][0] == "start"
 
 
 class TestRightClick:
