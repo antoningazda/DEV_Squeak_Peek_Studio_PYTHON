@@ -20,7 +20,8 @@ dependencies = [
 
     # ── Audio ─────────────────────────────────────────────────────────────
     "soundfile>=0.12",          # WAV I/O (250 kHz, float32)
-    "librosa>=0.10",            # time-stretch for sonification
+    "librosa>=0.10",            # STFT for sonification
+    "soxr>=0.3",                # fractional-rate resampling for sonification
     "sounddevice>=0.4",         # real-time playback
 
     # ── Machine Learning ──────────────────────────────────────────────────

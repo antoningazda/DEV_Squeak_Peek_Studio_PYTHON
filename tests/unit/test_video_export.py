@@ -7,12 +7,7 @@ import subprocess
 import numpy as np
 import pytest
 
-from squeak_peek.labels.model import Label
-from squeak_peek.video.export import (
-    _align_audio,
-    export_synced_video,
-    export_synced_video_with_spectrogram,
-)
+from squeak_peek.video.export import _align_audio, export_synced_video
 
 
 class TestAlignAudio:
@@ -74,56 +69,4 @@ class TestExportSyncedVideo:
         with pytest.raises(FileNotFoundError):
             export_synced_video(
                 tmp_path / "nonexistent.mp4", sonified, 48000, 0.0, tmp_path / "out.mp4"
-            )
-
-
-class TestExportSyncedVideoWithSpectrogram:
-    def test_export_produces_playable_file(self, synthetic_video, tmp_path):
-        fs = 250_000
-        duration = 2.0
-        n = int(duration * fs)
-        t = np.arange(n) / fs
-        samples = (0.01 * np.random.randn(n)).astype(np.float32)
-        call_mask = (t >= 0.5) & (t < 0.55)
-        samples[call_mask] += 0.5 * np.sin(2 * np.pi * 60_000 * t[call_mask]).astype(np.float32)
-
-        sfs = 48000
-        sonified = (
-            0.5 * np.sin(2 * np.pi * 300 * np.arange(int(duration * sfs)) / sfs)
-        ).astype(np.float32)
-
-        detected = [Label(start_time=0.5, end_time=0.55, label="d")]
-        reference = [
-            Label(
-                start_time=1.0, end_time=1.05, label="5",
-                start_frequency=55_000, end_frequency=65_000,
-            )
-        ]
-        out_path = tmp_path / "out_spec.mp4"
-
-        export_synced_video_with_spectrogram(
-            synthetic_video, out_path,
-            samples, fs,
-            sonified, sfs, 0.0,
-            detected, reference,
-            fmin_hz=40_000, fmax_hz=120_000, nperseg=1024, noverlap=512,
-            colormap_name="parula",
-            detected_color_name="cyan", reference_color_name="magenta",
-        )
-
-        assert out_path.exists()
-        assert out_path.stat().st_size > 0
-
-    def test_missing_video_raises(self, tmp_path):
-        sonified = np.zeros(1000, dtype=np.float32)
-        samples = np.zeros(1000, dtype=np.float32)
-        with pytest.raises(FileNotFoundError):
-            export_synced_video_with_spectrogram(
-                tmp_path / "nonexistent.mp4", tmp_path / "out.mp4",
-                samples, 250_000,
-                sonified, 48000, 0.0,
-                [], [],
-                fmin_hz=40_000, fmax_hz=120_000, nperseg=64, noverlap=32,
-                colormap_name="parula",
-                detected_color_name=None, reference_color_name=None,
             )

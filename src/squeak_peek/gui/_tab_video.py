@@ -183,7 +183,7 @@ class VideoTab(QWidget):
 
         export_row = QHBoxLayout()
         export_row.addStretch()
-        self._export_btn = QPushButton("Export video with spectrogram + sonified audio…")
+        self._export_btn = QPushButton("Export video with sonified audio…")
         self._export_btn.setObjectName("primaryBtn")
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self._export)
@@ -368,28 +368,11 @@ class VideoTab(QWidget):
             return
 
         sonified, sfs = s.sonified_track
-        vis = s.settings.visualization
         self._export_btn.setEnabled(False)
         self._export_btn.setText("Exporting…")
 
         self._export_worker = VideoExportWorker(
-            s.video_path,
-            s.samples,
-            s.fs,
-            sonified,
-            sfs,
-            s.video_sync_offset,
-            s.detected_labels,
-            s.reference_labels,
-            vis.spectrogram_min_freq_hz,
-            vis.spectrogram_max_freq_hz,
-            vis.spectrogram_window,
-            vis.spectrogram_overlap,
-            vis.colormap,
-            vis.label_color,
-            vis.reference_label_color,
-            out_path,
-            self,
+            s.video_path, sonified, sfs, s.video_sync_offset, out_path, self
         )
         self._export_worker.succeeded.connect(self._on_export_succeeded)
         self._export_worker.failed.connect(self._on_export_failed)
@@ -397,10 +380,10 @@ class VideoTab(QWidget):
 
     def _on_export_succeeded(self) -> None:
         self._export_btn.setEnabled(True)
-        self._export_btn.setText("Export video with spectrogram + sonified audio…")
+        self._export_btn.setText("Export video with sonified audio…")
         QMessageBox.information(self, "Export complete", "Video exported successfully.")
 
     def _on_export_failed(self, message: str) -> None:
         self._export_btn.setEnabled(True)
-        self._export_btn.setText("Export video with spectrogram + sonified audio…")
+        self._export_btn.setText("Export video with sonified audio…")
         QMessageBox.critical(self, "Export failed", message)

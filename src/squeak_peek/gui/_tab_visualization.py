@@ -181,7 +181,13 @@ class VisualizationTab(QWidget):
                 end_time=end_time,
                 fs=s.fs,
                 semitones=vis.sonification_st,
-                slowdown=vis.sonification_slowdown,
+                # None = slow down by exactly the pitch ratio, which needs no
+                # phase vocoder and is therefore artefact-free.
+                slowdown=(
+                    None if vis.sonification_natural_speed
+                    else vis.sonification_slowdown
+                ),
+                denoise=vis.sonification_denoise,
             )
 
             # Compute mapping ratio (original duration / stretched output duration)
