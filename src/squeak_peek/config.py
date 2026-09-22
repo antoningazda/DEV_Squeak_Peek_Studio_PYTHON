@@ -133,11 +133,11 @@ class VisualizationSettings(BaseModel):
 class LabelEditSettings(BaseModel):
     """Mirrors the 'LabelEdit' section of default.json."""
 
-    spectrogram_window: int = Field(alias="SpectrogramWindow", default=1024)
-    spectrogram_overlap: int = Field(alias="SpectrogramOverlap", default=512)
+    spectrogram_window: int = Field(alias="SpectrogramWindow", default=4096)
+    spectrogram_overlap: int = Field(alias="SpectrogramOverlap", default=2048)
     spectrogram_min_freq_khz: float = Field(alias="SpectrogramMinFrequency", default=40)
     spectrogram_max_freq_khz: float = Field(alias="SpectrogramMaxFrequency", default=120)
-    colormap: str = Field(alias="SpectrogramColormap", default="hsv")
+    colormap: str = Field(alias="SpectrogramColormap", default="invgray")
     classifications: str = Field(
         alias="Classifications",
         default="d,sk,5,5t,5w,c5",

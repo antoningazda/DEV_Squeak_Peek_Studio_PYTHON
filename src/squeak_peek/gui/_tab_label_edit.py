@@ -33,6 +33,7 @@ class LabelEditTab(QWidget):
 
         state.wav_loaded.connect(self._on_labels_changed)
         state.labels_changed.connect(self._on_labels_changed)
+        state.settings_changed.connect(self._on_settings_changed)
         t.signal.changed.connect(self._on_theme_changed)
 
         # Connect spectrogram signals
@@ -215,6 +216,14 @@ class LabelEditTab(QWidget):
             return
         self._idx = 0
         self._show_current()
+
+    def _on_settings_changed(self) -> None:
+        """Re-render with the current settings (colormap, window/overlap,
+        classification list) without resetting which label is shown —
+        unlike _on_labels_changed, this isn't a new set of labels."""
+        self._reload_classes()
+        if self._state.detected_labels:
+            self._show_current()
 
     def _reload_classes(self) -> None:
         classes = self._state.settings.label_edit.classification_list
