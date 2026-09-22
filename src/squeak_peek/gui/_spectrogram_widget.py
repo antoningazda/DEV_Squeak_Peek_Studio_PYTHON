@@ -323,12 +323,9 @@ class SpectrogramWidget(QWidget):
     ) -> None:
         """Draw start/end lines + text for each label visible in the segment.
 
-        A label carrying real frequency bounds (start_frequency/end_frequency
-        not both 0 — e.g. reference labels imported from a file with a
-        StartFreq/EndFreq line) gets a full bounding box on the spectrogram
-        instead of full-height start/end lines, since the frequency range is
-        actually known. Detector output currently zeroes both fields (no
-        frequency estimate), so it keeps the full-height line style.
+        Always full-height start/end lines (not a frequency-range box) —
+        label frequency data isn't reliable enough across example/reference
+        files to anchor a box's vertical extent.
         """
         text_y = fmax_khz - (fmax_khz - fmin_khz) * 0.04  # just inside top edge
 
@@ -336,29 +333,14 @@ class SpectrogramWidget(QWidget):
             if lbl.end_time < t_start or lbl.start_time > t_end:
                 continue
 
-            has_freq_range = lbl.start_frequency != 0.0 or lbl.end_frequency != 0.0
-
-            if has_freq_range:
-                f_lo = min(lbl.start_frequency, lbl.end_frequency) / 1000.0
-                f_hi = max(lbl.start_frequency, lbl.end_frequency) / 1000.0
-                box = pg.PlotCurveItem(
-                    [lbl.start_time, lbl.end_time, lbl.end_time, lbl.start_time, lbl.start_time],
-                    [f_lo, f_lo, f_hi, f_hi, f_lo],
-                    pen=pen,
-                )
-                box.setZValue(10)
-                self._spec_plot.addItem(box)
-                self._label_items.append((self._spec_plot, box))
-                top_y = f_hi
-            else:
-                # Vertical dashed lines at start and end on spectrogram —
-                # no horizontal tie-line at the top; just the two lines.
-                for t in (lbl.start_time, lbl.end_time):
-                    line = pg.InfiniteLine(pos=t, angle=90, pen=pen, movable=False)
-                    line.setZValue(10)
-                    self._spec_plot.addItem(line)
-                    self._label_items.append((self._spec_plot, line))
-                top_y = text_y
+            # Vertical dashed lines at start and end on spectrogram — no
+            # horizontal tie-line at the top; just the two lines.
+            for t in (lbl.start_time, lbl.end_time):
+                line = pg.InfiniteLine(pos=t, angle=90, pen=pen, movable=False)
+                line.setZValue(10)
+                self._spec_plot.addItem(line)
+                self._label_items.append((self._spec_plot, line))
+            top_y = text_y
 
             # Text label: a small opaque badge (dark fill, colored border/
             # text matching the line color) rather than bare text, so it
