@@ -18,8 +18,7 @@ torch = pytest.importorskip("torch")
 
 from squeak_peek.audio.io import save_wav  # noqa: E402
 from squeak_peek.cnn.train import load_checkpoint, save_checkpoint, train_cnn  # noqa: E402
-from squeak_peek.config import CNNParams  # noqa: E402
-from squeak_peek.detectors.cnn import CNNDetector  # noqa: E402
+from squeak_peek.detectors.cnn import CNNDetector, CNNParams  # noqa: E402
 from squeak_peek.labels.io import export_labels  # noqa: E402
 from squeak_peek.labels.model import Label  # noqa: E402
 

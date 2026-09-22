@@ -12,8 +12,7 @@ from __future__ import annotations
 import numpy as np
 
 from squeak_peek.audio.filters import bandpass_filter_filtfilt, compute_stft
-from squeak_peek.config import PSDParams
-from squeak_peek.detectors.psd import PSDDetector
+from squeak_peek.detectors.psd import PSDDetector, PSDParams
 from squeak_peek.labels.model import Label
 
 

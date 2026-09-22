@@ -11,16 +11,25 @@ from squeak_peek.config import AppSettings
 from squeak_peek.gui._state import AppState
 
 
-def test_autoload_defaults_no_settings_file() -> None:
+def test_autoload_defaults_no_settings_file(tmp_path, monkeypatch) -> None:
     """Test that app starts normally when no default.json exists."""
     state = AppState()
     data_input_tab = MagicMock()
 
     # Import here to avoid import-time side effects
-    from squeak_peek.gui.app import _autoload_defaults
+    from squeak_peek.gui import app as app_module
+
+    # _autoload_defaults resolves settings/default.json relative to
+    # __file__'s repo root; point it at an empty temp tree (mirroring the
+    # real src/squeak_peek/gui/ nesting) so the file genuinely doesn't
+    # exist here, rather than relying on the real repo's own file being
+    # absent (it isn't).
+    fake_app_py = tmp_path / "repo" / "src" / "squeak_peek" / "gui" / "app.py"
+    fake_app_py.parent.mkdir(parents=True)
+    monkeypatch.setattr(app_module, "__file__", str(fake_app_py))
 
     # Should not raise, should not modify state
-    _autoload_defaults(state, data_input_tab)
+    app_module._autoload_defaults(state, data_input_tab)
 
     # data_input_tab methods should not be called
     data_input_tab._load_files.assert_not_called()

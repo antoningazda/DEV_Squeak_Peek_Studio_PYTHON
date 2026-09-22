@@ -10,9 +10,10 @@ from pathlib import Path
 
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction, QKeyEvent
+from PyQt6.QtGui import QAction, QKeyEvent, QKeySequence
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QStyleFactory, QTabWidget
 
+from . import _shortcuts as shortcuts
 from . import _theme as t
 from ._state import AppState
 from ._tab_data_input import DataInputTab
@@ -21,6 +22,7 @@ from ._tab_info import InfoTab
 from ._tab_label_edit import LabelEditTab
 from ._tab_metrics import MetricsTab
 from ._tab_settings import SettingsTab
+from ._tab_video import VideoTab
 from ._tab_visualization import VisualizationTab
 
 logger = logging.getLogger(__name__)
@@ -194,6 +196,7 @@ class MainWindow(QMainWindow):
         self._build_menu()
 
         state.wav_loaded.connect(self._on_wav_loaded)
+        shortcuts.signal.changed.connect(self._refresh_menu_shortcuts)
 
     def _build_ui(self) -> None:
         s = self._state
@@ -203,17 +206,40 @@ class MainWindow(QMainWindow):
         self._detection_tab.set_data_input_tab(self._data_tab)
         self._visualization_tab = VisualizationTab(s)
         self._label_edit_tab = LabelEditTab(s)
+        self._video_tab = VideoTab(s)
 
         self._tabs = QTabWidget()
         self._tabs.setObjectName("mainTabs")
         self._tabs.setDocumentMode(True)
-        self._tabs.addTab(self._data_tab,       "Data Input")
+        # QTabBar consumes Left/Right arrow keys itself (to switch tabs) as
+        # long as it holds keyboard focus — which it does right after you
+        # click a tab header. That silently swallowed the Left/Right
+        # "previous/next segment or label" shortcut the instant you switched
+        # into a tab and tried to use it. Denying the tab bar focus lets
+        # those keys reach MainWindow.keyPressEvent instead, without
+        # affecting mouse clicks on the tabs themselves.
+        self._tabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._tabs.addTab(self._data_tab,           "Data Input")
         self._tabs.addTab(self._visualization_tab,  "Visualization")
-        self._tabs.addTab(self._detection_tab,  "Detection")
-        self._tabs.addTab(self._label_edit_tab,      "Label Edit")
-        self._tabs.addTab(MetricsTab(s),        "Metrics")
-        self._tabs.addTab(SettingsTab(s),       "Settings")
-        self._tabs.addTab(InfoTab(),            "Info")
+        self._tabs.addTab(self._detection_tab,      "Detection")
+        self._tabs.addTab(self._label_edit_tab,     "Label Edit")
+        self._tabs.addTab(self._video_tab,          "Video")
+        self._tabs.addTab(MetricsTab(s),            "Metrics")
+        self._tabs.addTab(SettingsTab(s),           "Settings")
+        self._tabs.addTab(InfoTab(),                "Info")
+
+        tab_descriptions = [
+            "Load a WAV recording and, optionally, detected/reference label files — single file or a whole batch folder.",
+            "Browse the loaded recording's spectrogram segment by segment, toggle overlays, and sonify audio into the audible range.",
+            "Run one or more automatic call detectors and export the resulting labels to text files.",
+            "Step through detected labels one at a time to accept/reject their detection and classification, and fix boundaries or call types.",
+            "Import a behavior video, auto-sync it to the recording, play it back with a continuous sonified soundtrack and labels, and export a synced copy.",
+            "Compare detected labels against reference labels: counts, precision, recall and F1.",
+            "Configure detector parameters, display options, appearance and keyboard shortcuts.",
+            "About Squeak Peek Studio, its authors, and links to documentation and source code.",
+        ]
+        for i, desc in enumerate(tab_descriptions):
+            self._tabs.setTabToolTip(i, desc)
 
         self.setCentralWidget(self._tabs)
         self.setStatusBar(QStatusBar())
@@ -223,17 +249,26 @@ class MainWindow(QMainWindow):
 
         file_menu = mb.addMenu("&File")
 
-        open_wav = QAction("&Open WAV…", self)
-        open_wav.setShortcut("Ctrl+O")
-        open_wav.triggered.connect(self._data_tab.open_wav)
-        file_menu.addAction(open_wav)
+        self._open_wav_action = QAction("&Open WAV…", self)
+        self._open_wav_action.setShortcut(shortcuts.get_shortcut("open_wav"))
+        self._open_wav_action.setStatusTip("Open a WAV file for analysis.")
+        self._open_wav_action.setToolTip("Open a WAV file for analysis.")
+        self._open_wav_action.triggered.connect(self._data_tab.open_wav)
+        file_menu.addAction(self._open_wav_action)
 
         file_menu.addSeparator()
 
-        quit_action = QAction("&Quit", self)
-        quit_action.setShortcut("Ctrl+Q")
-        quit_action.triggered.connect(self.close)
-        file_menu.addAction(quit_action)
+        self._quit_action = QAction("&Quit", self)
+        self._quit_action.setShortcut(shortcuts.get_shortcut("quit"))
+        self._quit_action.setStatusTip("Close Squeak Peek Studio.")
+        self._quit_action.setToolTip("Close Squeak Peek Studio.")
+        self._quit_action.triggered.connect(self.close)
+        file_menu.addAction(self._quit_action)
+
+    def _refresh_menu_shortcuts(self) -> None:
+        """Re-read bindings after they're edited in Settings → Shortcuts."""
+        self._open_wav_action.setShortcut(shortcuts.get_shortcut("open_wav"))
+        self._quit_action.setShortcut(shortcuts.get_shortcut("quit"))
 
     def _on_wav_loaded(self) -> None:
         p = self._state.wav_path
@@ -260,18 +295,20 @@ class MainWindow(QMainWindow):
         # Get the current tab's title
         current_tab = self._tabs.currentWidget()
         tab_title = self._tabs.tabText(self._tabs.indexOf(current_tab))
-        key = event.key()
-        modifiers = event.modifiers()
+        seq = QKeySequence(event.keyCombination())
 
-        # Navigation: Left/Right arrows
-        if key == Qt.Key.Key_Left:
+        def is_(action_id: str) -> bool:
+            return shortcuts.matches(action_id, seq)
+
+        # Navigation (default: Left/Right arrows — configurable in Settings → Shortcuts)
+        if is_("prev_segment"):
             if tab_title == "Visualization" and self._visualization_tab:
                 self._visualization_tab.move_to_previous_segment()
                 event.accept()
             elif tab_title == "Label Edit" and self._label_edit_tab:
                 self._label_edit_tab.move_to_previous_label()
                 event.accept()
-        elif key == Qt.Key.Key_Right:
+        elif is_("next_segment"):
             if tab_title == "Visualization" and self._visualization_tab:
                 self._visualization_tab.move_to_next_segment()
                 event.accept()
@@ -281,19 +318,19 @@ class MainWindow(QMainWindow):
 
         # Label Edit tab shortcuts
         elif tab_title == "Label Edit" and self._label_edit_tab:
-            if key == Qt.Key.Key_C:
-                if modifiers & Qt.KeyboardModifier.ShiftModifier:
-                    self._label_edit_tab.reject_classification()
-                else:
-                    self._label_edit_tab.accept_classification()
+            if is_("accept_classification"):
+                self._label_edit_tab.accept_classification()
                 event.accept()
-            elif key == Qt.Key.Key_D:
-                if modifiers & Qt.KeyboardModifier.ShiftModifier:
-                    self._label_edit_tab.reject_detection()
-                else:
-                    self._label_edit_tab.accept_detection()
+            elif is_("reject_classification"):
+                self._label_edit_tab.reject_classification()
                 event.accept()
-            elif key == Qt.Key.Key_Space:
+            elif is_("accept_detection"):
+                self._label_edit_tab.accept_detection()
+                event.accept()
+            elif is_("reject_detection"):
+                self._label_edit_tab.reject_detection()
+                event.accept()
+            elif is_("accept_both_advance"):
                 self._label_edit_tab.accept_both_and_advance()
                 event.accept()
 
@@ -307,8 +344,10 @@ def _autoload_defaults(state: AppState, data_input_tab: DataInputTab) -> None:
     This is a convenience feature; failures are logged but do not crash the app.
     """
     try:
-        # Find the settings file relative to the package/repo root
-        package_root = Path(__file__).parent.parent.parent  # Up to squeak_peek repo root
+        # Find the settings file relative to the package/repo root.
+        # __file__ is <repo>/src/squeak_peek/gui/app.py, so four parents
+        # (gui -> squeak_peek -> src -> <repo>) reach the repo root.
+        package_root = Path(__file__).parent.parent.parent.parent
         settings_path = package_root / "settings" / "default.json"
 
         if not settings_path.exists():
@@ -332,21 +371,18 @@ def _autoload_defaults(state: AppState, data_input_tab: DataInputTab) -> None:
         if data_input.default_usv_single:
             wav_path = Path(data_input.default_usv_single)
             if wav_path.exists():
-                data_input_tab._pending_wav = str(wav_path)
                 data_input_tab._wav_edit.setText(str(wav_path))
                 files_to_load.append(f"WAV: {wav_path}")
 
         if data_input.default_label_single:
             det_path = Path(data_input.default_label_single)
             if det_path.exists():
-                data_input_tab._pending_det = str(det_path)
                 data_input_tab._det_edit.setText(str(det_path))
                 files_to_load.append(f"Detected labels: {det_path}")
 
         if data_input.default_reference_label_single:
             ref_path = Path(data_input.default_reference_label_single)
             if ref_path.exists():
-                data_input_tab._pending_ref = str(ref_path)
                 data_input_tab._ref_edit.setText(str(ref_path))
                 files_to_load.append(f"Reference labels: {ref_path}")
 
@@ -382,7 +418,7 @@ def main() -> None:
 
     state = AppState()
     window = MainWindow(state)
-    window.show()
+    window.showMaximized()
 
     # Try to auto-load default settings and files (non-fatal if it fails)
     if window._data_tab:

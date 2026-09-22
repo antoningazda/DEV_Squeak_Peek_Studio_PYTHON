@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 from squeak_peek.labels.io import export_labels
 from squeak_peek.labels.model import Label
 
+from . import _shortcuts as shortcuts
 from . import _theme as t
 from ._spectrogram_widget import SpectrogramWidget
 from ._state import AppState
@@ -32,6 +33,7 @@ class LabelEditTab(QWidget):
 
         state.wav_loaded.connect(self._on_labels_changed)
         state.labels_changed.connect(self._on_labels_changed)
+        state.settings_changed.connect(self._on_settings_changed)
         t.signal.changed.connect(self._on_theme_changed)
 
         # Connect spectrogram signals
@@ -57,8 +59,11 @@ class LabelEditTab(QWidget):
         # ── State counters ────────────────────────────────────────────────
         counters_row = QHBoxLayout()
         counters_row.addStretch()
+        counters_tip = "Running totals across all labels in this file, updated as you accept/reject."
 
-        counters_row.addWidget(QLabel("Detections:"))
+        det_hdr = QLabel("Detections:")
+        det_hdr.setToolTip(counters_tip)
+        counters_row.addWidget(det_hdr)
         self._counter_det_accepted = QLabel("0")
         counters_row.addWidget(self._counter_det_accepted)
         counters_row.addWidget(QLabel("accepted /"))
@@ -68,7 +73,9 @@ class LabelEditTab(QWidget):
         counters_row.addWidget(QLabel("rejected"))
 
         counters_row.addSpacing(20)
-        counters_row.addWidget(QLabel("Classifications:"))
+        cls_hdr = QLabel("Classifications:")
+        cls_hdr.setToolTip(counters_tip)
+        counters_row.addWidget(cls_hdr)
 
         self._counter_cls_accepted = QLabel("0")
         counters_row.addWidget(self._counter_cls_accepted)
@@ -88,11 +95,17 @@ class LabelEditTab(QWidget):
         nav_row = QHBoxLayout()
         self._prev_btn = QPushButton("◀")
         self._prev_btn.setFixedWidth(36)
+        self._prev_btn.setToolTip(
+            f"Previous label (shortcut: {shortcuts.get_shortcut('prev_segment').toString()})."
+        )
         self._prev_btn.clicked.connect(self._prev)
         nav_row.addWidget(self._prev_btn)
 
         self._next_btn = QPushButton("▶")
         self._next_btn.setFixedWidth(36)
+        self._next_btn.setToolTip(
+            f"Next label (shortcut: {shortcuts.get_shortcut('next_segment').toString()})."
+        )
         self._next_btn.clicked.connect(self._next)
         nav_row.addWidget(self._next_btn)
         nav_row.addStretch()
@@ -101,6 +114,10 @@ class LabelEditTab(QWidget):
         nav_row.addWidget(QLabel("Class:"))
         self._class_combo = QComboBox()
         self._class_combo.setMinimumWidth(90)
+        self._class_combo.setToolTip(
+            "Call-type classification assigned to the current label. "
+            "Edit the available options in Settings → Label Edit."
+        )
         self._class_combo.currentTextChanged.connect(self._on_class_changed)
         self._reload_classes()
         nav_row.addWidget(self._class_combo)
@@ -109,8 +126,16 @@ class LabelEditTab(QWidget):
 
         # Detection state row
         det_row = QHBoxLayout()
-        det_row.addWidget(QLabel("Detection State:"))
+        det_state_lbl = QLabel("Detection State:")
+        det_state_tip = (
+            f"Was a call correctly detected here? Accept/reject with the "
+            f"{shortcuts.get_shortcut('accept_detection').toString()} / "
+            f"{shortcuts.get_shortcut('reject_detection').toString()} shortcuts."
+        )
+        det_state_lbl.setToolTip(det_state_tip)
+        det_row.addWidget(det_state_lbl)
         self._det_state_combo = QComboBox()
+        self._det_state_combo.setToolTip(det_state_tip)
         self._det_state_combo.addItems(["None", "Accepted", "Rejected"])
         self._det_state_combo.currentTextChanged.connect(self._on_detection_state_changed)
         det_row.addWidget(self._det_state_combo)
@@ -119,8 +144,16 @@ class LabelEditTab(QWidget):
 
         # Classification state row
         cls_row = QHBoxLayout()
-        cls_row.addWidget(QLabel("Classification State:"))
+        cls_state_lbl = QLabel("Classification State:")
+        cls_state_tip = (
+            f"Is the assigned call type correct? Accept/reject with the "
+            f"{shortcuts.get_shortcut('accept_classification').toString()} / "
+            f"{shortcuts.get_shortcut('reject_classification').toString()} shortcuts."
+        )
+        cls_state_lbl.setToolTip(cls_state_tip)
+        cls_row.addWidget(cls_state_lbl)
         self._cls_state_combo = QComboBox()
+        self._cls_state_combo.setToolTip(cls_state_tip)
         self._cls_state_combo.addItems(["None", "Accepted", "Rejected"])
         self._cls_state_combo.currentTextChanged.connect(self._on_classification_state_changed)
         cls_row.addWidget(self._cls_state_combo)
@@ -132,6 +165,9 @@ class LabelEditTab(QWidget):
         cls_override_row.addWidget(QLabel("Corrected class (rejected):"))
         self._cls_override_edit = QLineEdit()
         self._cls_override_edit.setPlaceholderText("Type alternative classification...")
+        self._cls_override_edit.setToolTip(
+            "Type the correct call-type label after rejecting this label's classification."
+        )
         self._cls_override_edit.textChanged.connect(self._on_override_text_changed)
         cls_override_row.addWidget(self._cls_override_edit)
         self._cls_override_container = QWidget()
@@ -145,6 +181,10 @@ class LabelEditTab(QWidget):
         export_row = QHBoxLayout()
         export_row.addStretch()
         export_btn = QPushButton("Export labels…")
+        export_btn.setToolTip(
+            "Save all labels, including your accept/reject decisions and any "
+            "boundary or class-type edits, to a text file."
+        )
         export_btn.clicked.connect(self._export)
         export_row.addWidget(export_btn)
         layout.addLayout(export_row)
@@ -176,6 +216,14 @@ class LabelEditTab(QWidget):
             return
         self._idx = 0
         self._show_current()
+
+    def _on_settings_changed(self) -> None:
+        """Re-render with the current settings (colormap, window/overlap,
+        classification list) without resetting which label is shown —
+        unlike _on_labels_changed, this isn't a new set of labels."""
+        self._reload_classes()
+        if self._state.detected_labels:
+            self._show_current()
 
     def _reload_classes(self) -> None:
         classes = self._state.settings.label_edit.classification_list

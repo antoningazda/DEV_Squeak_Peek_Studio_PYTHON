@@ -8,8 +8,10 @@ Phase 1: only a smoke test verifying the project structure is importable.
 
 
 def test_package_importable():
+    import re
+
     import squeak_peek  # noqa: F401
-    assert squeak_peek.__version__ == "1.0.0"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", squeak_peek.__version__)
 
 
 def test_config_importable():

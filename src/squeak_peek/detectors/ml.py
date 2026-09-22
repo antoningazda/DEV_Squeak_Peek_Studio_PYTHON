@@ -12,13 +12,38 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+from pydantic import BaseModel, Field
 from scipy.signal import medfilt
 
-from squeak_peek.config import MLParams
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.features.extract import extract_frame_features
 from squeak_peek.labels.model import Label
 from squeak_peek.ml.train import _nfft_for, _preprocess, load_model
+
+
+class MLParams(BaseModel):
+    """Runtime parameters for the ML (Random Forest) detector."""
+
+    modelPath: str = Field(
+        "",
+        description="Path to a trained Random Forest model (.joblib) used for detection.",
+        json_schema_extra={"widget": "file", "file_filter": "Joblib files (*.joblib)"},
+    )
+    minEventDuration: float = Field(
+        0.003, ge=0.0, le=10.0,
+        description="Shortest event kept after merging adjacent detected frames.",
+        json_schema_extra={"unit": "s", "decimals": 4},
+    )
+    sensitivity: float = Field(
+        0.5, ge=0.0, le=1.0,
+        description="Frame-probability cutoff for classifying a frame as a call.",
+        json_schema_extra={
+            "decimals": 4,
+            "caption": "Lower sensitivity finds more (and weaker) calls; higher sensitivity keeps only confident detections.",
+        },
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class MLDetector(AbstractDetector):
@@ -30,8 +55,16 @@ class MLDetector(AbstractDetector):
     inference always matches how the model was trained.
     """
 
-    def __init__(self, params: MLParams):
-        self.params = params
+    id = "ML"
+    display_name = "ML"
+    description = (
+        "Machine-learning (Random Forest) detector using a trained model. "
+        "Requires a model file configured in Settings -> ML detector."
+    )
+    Params = MLParams
+
+    def __init__(self, params: MLParams) -> None:
+        super().__init__(params)
         self._model_dict: dict[str, Any] | None = None
 
     def _load_model(self) -> dict[str, Any]:
@@ -101,7 +134,3 @@ class MLDetector(AbstractDetector):
             )
 
         return labels
-
-    @property
-    def name(self) -> str:
-        return "ML"

@@ -21,13 +21,95 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+from pydantic import BaseModel, Field
 
 from squeak_peek.audio.filters import bandpass_filter_filtfilt, compute_stft
 from squeak_peek.detectors.base import AbstractDetector
 
 if TYPE_CHECKING:
-    from squeak_peek.config import PSDParams
     from squeak_peek.labels.model import Label
+
+
+class PSDParams(BaseModel):
+    """Parameters for the Power Spectral Density detector."""
+
+    fcutMin: float = Field(
+        40_000, ge=0, le=250_000,
+        description="Lower bound of the frequency band the PSD detector analyses.",
+        json_schema_extra={"unit": "Hz", "group": "freq_band"},
+    )
+    fcutMax: float = Field(
+        120_000, ge=0, le=250_000,
+        description="Upper bound of the frequency band the PSD detector analyses.",
+        json_schema_extra={
+            "unit": "Hz", "group": "freq_band",
+            "caption": "Frequencies outside [fcutMin, fcutMax] are ignored when computing signal power.",
+        },
+    )
+    ROIstart: float = Field(
+        60, ge=0, le=100_000,
+        description="Start of the Region of Interest (used only when runWholeSignal is off).",
+        json_schema_extra={"unit": "s"},
+    )
+    ROIlength: float = Field(
+        10, ge=0, le=100_000,
+        description="Length of the Region of Interest (used only when runWholeSignal is off).",
+        json_schema_extra={"unit": "s"},
+    )
+    runWholeSignal: bool = Field(
+        True, description="Ignore the ROI and process the full signal.",
+    )
+    segmentLength: int = Field(
+        8192, ge=256, le=65_536,
+        description="STFT window length used to compute the power spectrum.",
+        json_schema_extra={
+            "unit": "samples",
+            "caption": "Larger windows give finer frequency resolution but coarser time resolution.",
+        },
+    )
+    overlapFactor: float = Field(
+        0.59, ge=0.0, le=0.99,
+        description="Fraction of each analysis window that overlaps with the next.",
+        json_schema_extra={
+            "decimals": 3,
+            "caption": "Higher overlap gives a smoother power estimate but increases processing time.",
+        },
+    )
+    maWindow: int = Field(
+        3, ge=1, le=1_000_000,
+        description="Moving-average window used to smooth the power envelope (frames).",
+        json_schema_extra={"unit": "frames"},
+    )
+    noiseWindow: int = Field(
+        240, ge=1, le=1_000_000,
+        description="Moving-minimum window used to estimate the noise floor (frames).",
+        json_schema_extra={"unit": "frames"},
+    )
+    localWindow: int = Field(
+        194, ge=1, le=1_000_000,
+        description="Window used to compute local mean/std for the adaptive threshold (frames).",
+        json_schema_extra={"unit": "frames"},
+    )
+    k: float = Field(
+        0.023, ge=0.0, le=10.0,
+        description="Scales the local-statistics term of the adaptive threshold.",
+        json_schema_extra={
+            "decimals": 4,
+            "caption": "Higher k -> stricter threshold -> fewer, more confident detections.",
+        },
+    )
+    w: float = Field(
+        0.994, ge=0.0, le=20.0,
+        description="Weight given to the local SNR term when computing the adaptive threshold.",
+        json_schema_extra={"decimals": 4},
+    )
+    minEffectivePower: float = Field(
+        8.5e-5, ge=0.0, le=1.0,
+        description="Minimum mean effective power required to accept a candidate event.",
+        json_schema_extra={"decimals": 8},
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 class PSDDetector(AbstractDetector):
@@ -39,16 +121,13 @@ class PSDDetector(AbstractDetector):
     It is highly tunable via PSDParams.
     """
 
-    def __init__(self, params: PSDParams):
-        """
-        Initialize the PSD detector with parameters.
-
-        Parameters
-        ----------
-        params : PSDParams
-            Configuration object containing all detector hyperparameters.
-        """
-        self.params = params
+    id = "PSD"
+    display_name = "PSD"
+    description = (
+        "Power Spectral Density — thresholds band power against an adaptive "
+        "noise floor. Fast and robust on clear, high-SNR recordings."
+    )
+    Params = PSDParams
 
     def detect(
         self,
@@ -167,11 +246,6 @@ class PSDDetector(AbstractDetector):
                 labels.append(label)
 
         return labels
-
-    @property
-    def name(self) -> str:
-        """Return the detector name."""
-        return "PSD"
 
     # ── Utility functions matching MATLAB behavior ─────────────────────
 

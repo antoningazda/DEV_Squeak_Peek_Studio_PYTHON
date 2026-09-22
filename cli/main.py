@@ -14,13 +14,11 @@ from pathlib import Path
 import click
 import numpy as np
 
+import squeak_peek.detectors  # noqa: F401  (registers built-in detectors)
+from squeak_peek import __version__ as APP_VERSION
 from squeak_peek.audio.io import load_wav
 from squeak_peek.config import AppSettings
 from squeak_peek.detectors.base import AbstractDetector
-from squeak_peek.detectors.bscd import BSCDDetector
-from squeak_peek.detectors.ml import MLDetector
-from squeak_peek.detectors.psd import PSDDetector
-from squeak_peek.detectors.rbd import RBDDetector
 from squeak_peek.labels.io import export_labels_detector, import_labels
 from squeak_peek.labels.metrics import compare_labels
 from squeak_peek.labels.model import Label
@@ -30,47 +28,25 @@ from squeak_peek.labels.postprocess import (
     remove_short_labels,
 )
 
-_DETECTOR_CHOICES = ["psd", "bscd", "rbd", "ml", "cnn"]
+_DETECTOR_CHOICES = sorted(cls.id.lower() for cls in AbstractDetector.all())
 
 
 def _build_detector(name: str, settings: AppSettings) -> AbstractDetector:
     """Instantiate a detector by name from the loaded settings."""
-    det = settings.detection
-    if name == "psd":
-        return PSDDetector(det.psd)
-    if name == "bscd":
-        return BSCDDetector(det.bscd)
-    if name == "rbd":
-        return RBDDetector(det.rbd)
-    if name == "ml":
-        if not det.ml.modelPath:
-            raise click.ClickException(
-                "The 'ml' detector needs a trained model. Train one with "
-                "squeak_peek.ml.train.train_model() and set Detection.ML.modelPath "
-                "in your settings JSON, or pass --settings pointing at one that does."
-            )
-        return MLDetector(det.ml)
-    if name == "cnn":
-        if not det.cnn.modelPath:
-            raise click.ClickException(
-                "The 'cnn' detector needs a trained model. Train one with "
-                "'squeak-peek-cli train-cnn' and set Detection.CNN.modelPath "
-                "in your settings JSON, or pass --settings pointing at one that does."
-            )
-        try:
-            from squeak_peek.detectors.cnn import CNNDetector
-        except ImportError as e:
-            raise click.ClickException(
-                "The 'cnn' detector needs torch/torchvision. Install with: "
-                "pip install squeak-peek-studio[cnn]"
-            ) from e
-        return CNNDetector(det.cnn)
-    raise click.ClickException(f"Unknown detector: {name!r}")
+    det_id = name.upper()
+    try:
+        cls = AbstractDetector.get(det_id)
+    except KeyError as exc:
+        raise click.ClickException(str(exc)) from exc
+    return cls(settings.detection.params_for(det_id))
 
 
 def _detector_band(detector_name: str, settings: AppSettings) -> tuple[float, float]:
     """The detector's own analysis band, for band-limited post-processing."""
-    params = getattr(settings.detection, detector_name, None)
+    try:
+        params = settings.detection.params_for(detector_name.upper())
+    except KeyError:
+        return 40_000.0, 120_000.0
     return (
         getattr(params, "fcutMin", 40_000.0),
         getattr(params, "fcutMax", 120_000.0),
@@ -102,7 +78,12 @@ def _postprocess(
 def _run_detection(wav_path: Path, detector_name: str, settings: AppSettings) -> list[Label]:
     signal, fs = load_wav(wav_path)
     detector = _build_detector(detector_name, settings)
-    labels = detector.detect(signal, fs)
+    try:
+        labels = detector.detect(signal, fs)
+    except (ValueError, RuntimeError) as exc:
+        # e.g. MLDetector/CNNDetector when Params.modelPath isn't configured,
+        # or the CNN extra isn't installed.
+        raise click.ClickException(str(exc)) from exc
     return _postprocess(labels, settings, signal, fs, _detector_band(detector_name, settings))
 
 
@@ -111,7 +92,7 @@ def _default_output_path(wav_path: Path, detector_name: str) -> Path:
 
 
 @click.group()
-@click.version_option("1.0.0", prog_name="squeak-peek-cli")
+@click.version_option(APP_VERSION, prog_name="squeak-peek-cli")
 def cli() -> None:
     """Squeak Peek Studio — headless batch processing CLI."""
 

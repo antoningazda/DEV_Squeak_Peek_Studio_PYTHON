@@ -13,6 +13,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from squeak_peek import __version__ as APP_VERSION
+
 from . import _theme as t
 
 # URLs for the buttons
@@ -48,6 +50,7 @@ class InfoTab(QWidget):
             self._logo_pixmap_rat = QPixmap(str(_ASSETS_DIR / "rat.gif")).scaledToWidth(120, Qt.TransformationMode.SmoothTransformation)
             self._logo.setPixmap(self._logo_pixmap)
             self._logo.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._logo.setToolTip("Click me.")
             self._is_rat_shown = False
             self._logo.mousePressEvent = self._on_logo_clicked
             layout.addWidget(self._logo)
@@ -56,7 +59,7 @@ class InfoTab(QWidget):
         self._title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._title)
 
-        self._version = QLabel("Version 0.0.6 · Python port")
+        self._version = QLabel(f"Version {APP_VERSION} · Python port")
         self._version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._version)
 
@@ -97,14 +100,17 @@ class InfoTab(QWidget):
         buttons_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._doc_button = QPushButton("Open Documentation")
+        self._doc_button.setToolTip(f"Open the user documentation in your browser.\n{DOCUMENTATION_URL}")
         self._doc_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(DOCUMENTATION_URL)))
         buttons_layout.addWidget(self._doc_button)
 
         self._thesis_button = QPushButton("Open Master's Thesis")
+        self._thesis_button.setToolTip(f"Open the thesis this app is based on.\n{THESIS_URL}")
         self._thesis_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(THESIS_URL)))
         buttons_layout.addWidget(self._thesis_button)
 
         self._source_button = QPushButton("Open Source Code")
+        self._source_button.setToolTip(f"Open the GitHub repository in your browser.\n{GITHUB_REPO_URL}")
         self._source_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(GITHUB_REPO_URL)))
         buttons_layout.addWidget(self._source_button)
 

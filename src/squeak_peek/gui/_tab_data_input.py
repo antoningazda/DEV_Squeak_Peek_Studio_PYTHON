@@ -56,9 +56,14 @@ class DataInputTab(QWidget):
 
         # ── Mode toggle (Single/Batch) ────────────────────────────────────
         mode_group = QGroupBox("Mode")
+        mode_group.setToolTip("Whether to analyze one recording at a time or a whole folder at once.")
         mode_layout = QHBoxLayout(mode_group)
         self._single_mode_rb = QRadioButton("Single file")
+        self._single_mode_rb.setToolTip("Load one WAV file, plus optional label files, at a time.")
         self._batch_mode_rb = QRadioButton("Batch folder")
+        self._batch_mode_rb.setToolTip(
+            "Load a whole folder of WAV files; matching label files are looked up by filename."
+        )
         self._single_mode_rb.setChecked(True)
         self._single_mode_rb.toggled.connect(self._on_mode_changed)
         self._batch_mode_rb.toggled.connect(self._on_mode_changed)
@@ -74,19 +79,29 @@ class DataInputTab(QWidget):
         single_grid.setSpacing(t.SP_2)
         single_grid.setColumnStretch(1, 1)
 
-        def _row(label_text: str, row: int) -> tuple[QPushButton, QLineEdit]:
+        def _row(label_text: str, row: int, tooltip: str) -> tuple[QPushButton, QLineEdit]:
             btn = QPushButton(label_text)
             btn.setFixedWidth(220)
+            btn.setToolTip(tooltip)
             edit = QLineEdit()
             edit.setReadOnly(True)
             edit.setPlaceholderText("No file selected")
+            edit.setToolTip(tooltip)
             single_grid.addWidget(btn,  row, 0)
             single_grid.addWidget(edit, row, 1)
             return btn, edit
 
-        wav_btn,  self._wav_edit  = _row("Select USV (.wav)",              0)
-        ref_btn,  self._ref_edit  = _row("Select reference labels (.txt)", 1)
-        det_btn,  self._det_edit  = _row("Select detected labels (.txt)",  2)
+        wav_btn,  self._wav_edit  = _row(
+            "Select USV (.wav)", 0, "The audio recording to analyze."
+        )
+        ref_btn,  self._ref_edit  = _row(
+            "Select reference labels (.txt)", 1,
+            "Ground-truth labels used to score detections in the Metrics tab (optional).",
+        )
+        det_btn,  self._det_edit  = _row(
+            "Select detected labels (.txt)", 2,
+            "Previously detected labels to load and continue editing in Label Edit (optional).",
+        )
 
         wav_btn.clicked.connect(self._browse_wav)
         ref_btn.clicked.connect(self._browse_reference)
@@ -103,22 +118,33 @@ class DataInputTab(QWidget):
         batch_grid.setSpacing(t.SP_2)
         batch_grid.setColumnStretch(1, 1)
 
-        def _batch_row(label_text: str, row: int) -> tuple[QPushButton, QLineEdit, QLabel]:
+        def _batch_row(label_text: str, row: int, tooltip: str) -> tuple[QPushButton, QLineEdit, QLabel]:
             btn = QPushButton(label_text)
             btn.setFixedWidth(220)
+            btn.setToolTip(tooltip)
             edit = QLineEdit()
             edit.setReadOnly(True)
             edit.setPlaceholderText("No folder selected")
+            edit.setToolTip(tooltip)
             count_label = QLabel("")
             count_label.setStyleSheet(f"color: {t.TEXT_SECONDARY}; font-size: {t.TEXT_XS}px;")
+            count_label.setToolTip("Number of matching files found in this folder.")
             batch_grid.addWidget(btn,  row, 0)
             batch_grid.addWidget(edit, row, 1)
             batch_grid.addWidget(count_label, row, 2)
             return btn, edit, count_label
 
-        usv_btn, self._batch_usv_edit, self._batch_usv_count = _batch_row("Select USV folder", 0)
-        ref_btn_b, self._batch_ref_edit, self._batch_ref_count = _batch_row("Select reference labels folder", 1)
-        det_btn_b, self._batch_det_edit, self._batch_det_count = _batch_row("Select detected labels folder", 2)
+        usv_btn, self._batch_usv_edit, self._batch_usv_count = _batch_row(
+            "Select USV folder", 0, "Folder of .wav recordings to process one after another."
+        )
+        ref_btn_b, self._batch_ref_edit, self._batch_ref_count = _batch_row(
+            "Select reference labels folder", 1,
+            "Folder of ground-truth label files, matched to recordings by filename (optional).",
+        )
+        det_btn_b, self._batch_det_edit, self._batch_det_count = _batch_row(
+            "Select detected labels folder", 2,
+            "Folder of previously detected label files, matched to recordings by filename (optional).",
+        )
 
         usv_btn.clicked.connect(self._browse_batch_usv)
         ref_btn_b.clicked.connect(self._browse_batch_reference)
@@ -139,16 +165,15 @@ class DataInputTab(QWidget):
         bottom_row = QHBoxLayout()
         bottom_row.addStretch()
         self._load_btn = QPushButton("Load files")
+        self._load_btn.setToolTip(
+            "Load the selected file(s)/folder(s) — required before Visualization, "
+            "Detection or Label Edit can show anything."
+        )
         self._load_btn.setObjectName("primaryBtn")
         self._load_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self._load_btn.clicked.connect(self._load_files)
         bottom_row.addWidget(self._load_btn)
         outer.addLayout(bottom_row)
-
-        # Pending paths (set by browse, committed on Load)
-        self._pending_wav: str = ""
-        self._pending_det: str = ""
-        self._pending_ref: str = ""
 
         self._apply_theme()
 
@@ -167,7 +192,6 @@ class DataInputTab(QWidget):
         )
         if path:
             self._wav_edit.setText(path)
-            self._pending_wav = path
 
     def _browse_detected(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -175,7 +199,6 @@ class DataInputTab(QWidget):
         )
         if path:
             self._det_edit.setText(path)
-            self._pending_det = path
 
     def _browse_reference(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -183,7 +206,6 @@ class DataInputTab(QWidget):
         )
         if path:
             self._ref_edit.setText(path)
-            self._pending_ref = path
 
     # ── Browse handlers (batch mode) ───────────────────────────────────────
 
@@ -233,25 +255,33 @@ class DataInputTab(QWidget):
     # ── Load ──────────────────────────────────────────────────────────────
 
     def _load_files(self) -> None:
+        """Load whatever paths are currently in the WAV/Detected/Reference
+        fields — read live from the widgets rather than from a separate
+        shadow variable, so this always reflects what's actually shown
+        (typed, pasted, or set by Browse/autoload), never a stale copy."""
         errors: list[str] = []
 
-        if self._pending_wav:
+        wav_path = self._wav_edit.text().strip()
+        det_path = self._det_edit.text().strip()
+        ref_path = self._ref_edit.text().strip()
+
+        if wav_path:
             try:
-                self._state.load_wav(self._pending_wav)
+                self._state.load_wav(wav_path)
             except Exception as exc:
                 errors.append(f"WAV: {exc}")
 
-        if self._pending_det:
+        if det_path:
             try:
-                labels = load_labels(self._pending_det)
+                labels = load_labels(det_path)
                 self._state.detected_labels = labels
                 self._state.labels_changed.emit()
             except Exception as exc:
                 errors.append(f"Detected labels: {exc}")
 
-        if self._pending_ref:
+        if ref_path:
             try:
-                labels = load_labels(self._pending_ref)
+                labels = load_labels(ref_path)
                 self._state.reference_labels = labels
                 self._state.labels_changed.emit()
             except Exception as exc:
@@ -264,7 +294,7 @@ class DataInputTab(QWidget):
 
     def open_wav(self) -> None:
         self._browse_wav()
-        if self._pending_wav:
+        if self._wav_edit.text().strip():
             self._load_files()
 
     # ── State callbacks ───────────────────────────────────────────────────

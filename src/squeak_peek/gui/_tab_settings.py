@@ -5,7 +5,10 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
+    QKeySequenceEdit,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -15,9 +18,16 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+import squeak_peek.classifiers  # noqa: F401  (registers built-in classifiers)
+import squeak_peek.detectors  # noqa: F401  (registers built-in detectors)
+from squeak_peek.classifiers.base import AbstractClassifier
 from squeak_peek.config import AppSettings
+from squeak_peek.detectors.base import AbstractDetector
 
+from . import _plugin_form as pf
+from . import _shortcuts as shortcuts
 from . import _theme as t
+from ._numeric_indicator import RangeIndicator, bind_range, bind_value
 from ._state import AppState
 
 
@@ -25,6 +35,8 @@ class SettingsTab(QWidget):
     def __init__(self, state: AppState, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._state = state
+        self._detector_widgets: dict[str, dict[str, QWidget]] = {}
+        self._classifier_widgets: dict[str, dict[str, QWidget]] = {}
         self._setup_ui()
         state.settings_changed.connect(self._reload_values)
 
@@ -36,72 +48,173 @@ class SettingsTab(QWidget):
         inner = QTabWidget()
         inner.setObjectName("innerTabs")
         inner.setDocumentMode(True)
-        inner.addTab(self._make_data_input_tab(), "Data Input")
-        inner.addTab(self._make_viz_tab(), "Visualization")
-        inner.addTab(self._make_psd_tab(), "PSD detector")
-        inner.addTab(self._make_bscd_tab(), "BSCD detector")
-        inner.addTab(self._make_rbd_tab(), "RBD detector")
-        inner.addTab(self._make_ml_tab(), "ML detector")
-        inner.addTab(self._make_post_tab(), "Post-processing")
-        inner.addTab(self._make_label_edit_tab(), "Label Edit")
-        inner.addTab(self._make_appearance_tab(), "Appearance")
+        sub_tabs = [
+            (self._make_data_input_tab(), "Data Input",
+             "Default files/folders auto-loaded at startup, and single-vs-batch mode."),
+            (self._make_viz_tab(), "Visualization",
+             "Spectrogram rendering, overlays and sonification for the Visualization tab."),
+        ]
+        for detector_cls in AbstractDetector.all():
+            params = self._state.settings.detection.params_for(detector_cls.id)
+            tab, widgets = self._make_plugin_tab(params)
+            self._detector_widgets[detector_cls.id] = widgets
+            sub_tabs.append((tab, f"{detector_cls.display_name} detector", detector_cls.description))
+        sub_tabs.append((self._make_post_tab(), "Post-processing",
+             "Merging and filtering rules applied to detections after any detector runs."))
+        for classifier_cls in AbstractClassifier.all():
+            params = self._state.settings.classification.params_for(classifier_cls.id)
+            tab, widgets = self._make_plugin_tab(params)
+            self._classifier_widgets[classifier_cls.id] = widgets
+            sub_tabs.append((tab, f"{classifier_cls.display_name} classifier", classifier_cls.description))
+        sub_tabs += [
+            (self._make_label_edit_tab(), "Label Edit",
+             "Spectrogram rendering and call-type list for the Label Edit tab."),
+            (self._make_appearance_tab(), "Appearance",
+             "The app's color scheme."),
+            (self._make_shortcuts_tab(), "Shortcuts",
+             "View and customize keyboard shortcuts."),
+        ]
+        for widget, title, tooltip in sub_tabs:
+            idx = inner.addTab(widget, title)
+            inner.setTabToolTip(idx, tooltip)
         layout.addWidget(inner)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         load_btn = QPushButton("Load settings…")
+        load_btn.setToolTip("Replace all settings below by loading them from a JSON file.")
         load_btn.clicked.connect(self._load)
         save_btn = QPushButton("Save settings…")
+        save_btn.setToolTip("Write the current settings (including unapplied edits) to a JSON file.")
         save_btn.clicked.connect(self._save)
         apply_btn = QPushButton("Apply")
         apply_btn.setObjectName("primaryBtn")
         apply_btn.setDefault(True)
+        apply_btn.setToolTip("Apply the edited values above to the running app.")
         apply_btn.clicked.connect(self._apply)
         btn_row.addWidget(load_btn)
         btn_row.addWidget(save_btn)
         btn_row.addWidget(apply_btn)
         layout.addLayout(btn_row)
 
-    # ── Sub-tabs ──────────────────────────────────────────────────────────
+    # ── Row-building helpers ─────────────────────────────────────────────
 
-    def _make_viz_tab(self) -> QWidget:
-        w = QWidget()
+    @staticmethod
+    def _new_form(w: QWidget) -> QFormLayout:
         form = QFormLayout(w)
         form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
         form.setVerticalSpacing(t.SP_2)
         form.setHorizontalSpacing(t.SP_3)
+        return form
+
+    @staticmethod
+    def _caption(text: str) -> QLabel:
+        cap = QLabel(text)
+        cap.setWordWrap(True)
+        cap.setStyleSheet(f"color: {t.TEXT_MUTED}; font-size: {t.TEXT_XS}px; padding-bottom: {t.SP_2}px;")
+        return cap
+
+    def _field(
+        self,
+        form: QFormLayout,
+        label_text: str,
+        widget: QWidget,
+        tooltip: str,
+        caption: str | None = None,
+        indicator: bool = True,
+    ) -> QWidget:
+        """Add one settings row: label + control, both carrying ``tooltip``
+        as a hover description, an optional muted caption line beneath it,
+        and — for spin boxes — a small bar showing the value's position
+        within its allowed range.
+        """
+        label = QLabel(label_text)
+        label.setToolTip(tooltip)
+        widget.setToolTip(tooltip)
+        form.addRow(label, widget)
+
+        if caption:
+            form.addRow(self._caption(caption))
+
+        if indicator and isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+            ind = RangeIndicator(unit=widget.suffix())
+            bind_value(widget, ind)
+            form.addRow(ind)
+
+        return widget
+
+    def _range_indicator(
+        self,
+        form: QFormLayout,
+        spin_lo: QSpinBox | QDoubleSpinBox,
+        spin_hi: QSpinBox | QDoubleSpinBox,
+    ) -> None:
+        """A single combined bar spanning both bounds of a lo/hi pair
+        (e.g. a frequency band), shown once under the second field."""
+        ind = RangeIndicator(spin_lo.minimum(), spin_hi.maximum(), unit=spin_hi.suffix())
+        bind_range(spin_lo, spin_hi, ind)
+        form.addRow(ind)
+
+    # ── Sub-tabs ──────────────────────────────────────────────────────────
+
+    def _make_viz_tab(self) -> QWidget:
+        w = QWidget()
+        form = self._new_form(w)
         vis = self._state.settings.visualization
 
         self._viz_window = QSpinBox()
         self._viz_window.setRange(64, 16_384)
         self._viz_window.setValue(vis.spectrogram_window)
-        form.addRow("Spectrogram window (samples):", self._viz_window)
+        self._field(
+            form, "Spectrogram window (samples):", self._viz_window,
+            "Number of audio samples per FFT window used to draw the spectrogram.",
+            "Larger windows sharpen frequency detail but blur fast time changes; "
+            "smaller windows do the opposite.",
+        )
 
         self._viz_overlap = QSpinBox()
         self._viz_overlap.setRange(0, 16_384)
         self._viz_overlap.setValue(vis.spectrogram_overlap)
-        form.addRow("Spectrogram overlap (samples):", self._viz_overlap)
+        self._field(
+            form, "Spectrogram overlap (samples):", self._viz_overlap,
+            "Samples shared between consecutive FFT windows. Must be smaller than the window size.",
+            "Higher overlap gives a smoother-looking spectrogram at the cost of more computation.",
+        )
 
         self._viz_fmin = QDoubleSpinBox()
         self._viz_fmin.setRange(0.0, 250.0)
         self._viz_fmin.setDecimals(1)
         self._viz_fmin.setSuffix(" kHz")
         self._viz_fmin.setValue(vis.spectrogram_min_freq_khz)
-        form.addRow("Min display frequency:", self._viz_fmin)
+        self._field(
+            form, "Min display frequency:", self._viz_fmin,
+            "Lower bound of the frequency axis shown in the spectrogram.",
+            indicator=False,
+        )
 
         self._viz_fmax = QDoubleSpinBox()
         self._viz_fmax.setRange(0.0, 250.0)
         self._viz_fmax.setDecimals(1)
         self._viz_fmax.setSuffix(" kHz")
         self._viz_fmax.setValue(vis.spectrogram_max_freq_khz)
-        form.addRow("Max display frequency:", self._viz_fmax)
+        self._field(
+            form, "Max display frequency:", self._viz_fmax,
+            "Upper bound of the frequency axis shown in the spectrogram.",
+            "Does not affect detection — only what part of the spectrum is drawn.",
+            indicator=False,
+        )
+        self._range_indicator(form, self._viz_fmin, self._viz_fmax)
 
         self._viz_seg_len = QDoubleSpinBox()
         self._viz_seg_len.setRange(0.01, 60.0)
         self._viz_seg_len.setDecimals(3)
         self._viz_seg_len.setSuffix(" s")
         self._viz_seg_len.setValue(vis.segment_length_seconds)
-        form.addRow("Segment length:", self._viz_seg_len)
+        self._field(
+            form, "Segment length:", self._viz_seg_len,
+            "Length of the audio segment shown at once in the Visualization tab.",
+            "Shorter segments zoom in on detail; longer segments show more context per view.",
+        )
 
         self._viz_colormap = QComboBox()
         colormaps = ["parula", "turbo", "hsv", "hot", "cool", "spring", "summer", "autumn", "winter", "gray", "bone", "copper", "pink", "jet", "invgray"]
@@ -109,7 +222,10 @@ class SettingsTab(QWidget):
         idx = self._viz_colormap.findText(vis.colormap)
         if idx >= 0:
             self._viz_colormap.setCurrentIndex(idx)
-        form.addRow("Colormap:", self._viz_colormap)
+        self._field(
+            form, "Colormap:", self._viz_colormap,
+            "Color palette used to render spectrogram intensity.",
+        )
 
         label_colors = ["red", "green", "blue", "cyan", "magenta", "yellow", "white"]
 
@@ -118,311 +234,157 @@ class SettingsTab(QWidget):
         idx = self._viz_label_color.findText(vis.label_color)
         if idx >= 0:
             self._viz_label_color.setCurrentIndex(idx)
-        form.addRow("Label color:", self._viz_label_color)
+        self._field(
+            form, "Label color:", self._viz_label_color,
+            "Color used to draw detected-label boxes on the spectrogram.",
+        )
 
         self._viz_ref_label_color = QComboBox()
         self._viz_ref_label_color.addItems(label_colors)
         idx = self._viz_ref_label_color.findText(vis.reference_label_color)
         if idx >= 0:
             self._viz_ref_label_color.setCurrentIndex(idx)
-        form.addRow("Reference label color:", self._viz_ref_label_color)
+        self._field(
+            form, "Reference label color:", self._viz_ref_label_color,
+            "Color used to draw reference-label boxes on the spectrogram.",
+        )
 
         self._viz_manual_label_len = QDoubleSpinBox()
         self._viz_manual_label_len.setRange(0.0, 10.0)
         self._viz_manual_label_len.setDecimals(4)
         self._viz_manual_label_len.setSuffix(" s")
         self._viz_manual_label_len.setValue(vis.manual_label_length)
-        form.addRow("Manual label length:", self._viz_manual_label_len)
+        self._field(
+            form, "Manual label length:", self._viz_manual_label_len,
+            "Default duration given to a label you create by right-clicking the spectrogram.",
+            "The new label is centered on the click point; drag its edges afterward to adjust it.",
+        )
 
         self._viz_show_labels = QComboBox()
         self._viz_show_labels.addItem("Show", True)
         self._viz_show_labels.addItem("Hide", False)
         self._viz_show_labels.setCurrentIndex(0 if vis.show_labels else 1)
-        form.addRow("Show detected labels:", self._viz_show_labels)
+        self._field(
+            form, "Show detected labels:", self._viz_show_labels,
+            "Whether detected-label boxes are drawn on the spectrogram by default.",
+        )
 
         self._viz_show_ref_labels = QComboBox()
         self._viz_show_ref_labels.addItem("Show", True)
         self._viz_show_ref_labels.addItem("Hide", False)
         self._viz_show_ref_labels.setCurrentIndex(0 if vis.show_reference_labels else 1)
-        form.addRow("Show reference labels:", self._viz_show_ref_labels)
+        self._field(
+            form, "Show reference labels:", self._viz_show_ref_labels,
+            "Whether reference-label boxes are drawn on the spectrogram by default.",
+        )
 
         self._viz_show_loading = QComboBox()
         self._viz_show_loading.addItem("Show", True)
         self._viz_show_loading.addItem("Hide", False)
         self._viz_show_loading.setCurrentIndex(0 if vis.show_loading_dialog else 1)
-        form.addRow("Show loading dialog:", self._viz_show_loading)
+        self._field(
+            form, "Show loading dialog:", self._viz_show_loading,
+            "Whether a progress dialog appears while a large WAV file is loading.",
+        )
 
         self._viz_sonif_st = QDoubleSpinBox()
         self._viz_sonif_st.setRange(-100.0, 100.0)
         self._viz_sonif_st.setDecimals(1)
         self._viz_sonif_st.setSuffix(" semitones")
         self._viz_sonif_st.setValue(vis.sonification_st)
-        form.addRow("Sonification semitones:", self._viz_sonif_st)
+        self._field(
+            form, "Sonification semitones:", self._viz_sonif_st,
+            "Pitch shift applied when sonifying a segment so ultrasonic calls become audible.",
+            "More negative values shift the pitch down further, bringing high-frequency "
+            "calls deeper into human hearing range.",
+        )
 
         self._viz_sonif_slowdown = QSpinBox()
         self._viz_sonif_slowdown.setRange(1, 100)
         self._viz_sonif_slowdown.setValue(vis.sonification_slowdown)
-        form.addRow("Sonification slowdown factor:", self._viz_sonif_slowdown)
+        self._field(
+            form, "Sonification slowdown factor:", self._viz_sonif_slowdown,
+            "Factor by which sonified playback is slowed down.",
+            "Higher values stretch playback out longer and lower its perceived pitch further.",
+        )
 
         return w
 
     def _make_data_input_tab(self) -> QWidget:
         w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
-        form.setVerticalSpacing(t.SP_2)
-        form.setHorizontalSpacing(t.SP_3)
+        form = self._new_form(w)
         data_input = self._state.settings.data_input
 
         self._di_usv_single = QLineEdit()
         self._di_usv_single.setText(data_input.default_usv_single)
-        form.addRow("Default USV (single file):", self._di_usv_single)
+        self._field(
+            form, "Default USV (single file):", self._di_usv_single,
+            "WAV file automatically loaded at startup when in single-file mode.",
+            indicator=False,
+        )
 
         self._di_label_single = QLineEdit()
         self._di_label_single.setText(data_input.default_label_single)
-        form.addRow("Default labels (single file):", self._di_label_single)
+        self._field(
+            form, "Default labels (single file):", self._di_label_single,
+            "Detected-label file automatically loaded at startup when in single-file mode.",
+            indicator=False,
+        )
 
         self._di_ref_label_single = QLineEdit()
         self._di_ref_label_single.setText(data_input.default_reference_label_single)
-        form.addRow("Default reference labels (single file):", self._di_ref_label_single)
+        self._field(
+            form, "Default reference labels (single file):", self._di_ref_label_single,
+            "Reference-label file automatically loaded at startup when in single-file mode.",
+            indicator=False,
+        )
 
         self._di_batch_mode = QComboBox()
         self._di_batch_mode.addItem("Single file", False)
         self._di_batch_mode.addItem("Batch (folders)", True)
         self._di_batch_mode.setCurrentIndex(1 if data_input.batch_mode else 0)
-        form.addRow("Mode:", self._di_batch_mode)
+        self._field(
+            form, "Mode:", self._di_batch_mode,
+            "Whether the Data Input tab starts in single-file or batch (folder) mode.",
+        )
 
         self._di_usv_batch = QLineEdit()
         self._di_usv_batch.setText(data_input.default_usv_batch)
-        form.addRow("Default USV folder (batch):", self._di_usv_batch)
+        self._field(
+            form, "Default USV folder (batch):", self._di_usv_batch,
+            "Folder of WAV files automatically loaded at startup when in batch mode.",
+            indicator=False,
+        )
 
         self._di_label_batch = QLineEdit()
         self._di_label_batch.setText(data_input.default_label_batch)
-        form.addRow("Default labels folder (batch):", self._di_label_batch)
+        self._field(
+            form, "Default labels folder (batch):", self._di_label_batch,
+            "Folder of detected-label files automatically loaded at startup when in batch mode.",
+            indicator=False,
+        )
 
         self._di_ref_label_batch = QLineEdit()
         self._di_ref_label_batch.setText(data_input.default_reference_label_batch)
-        form.addRow("Default reference labels folder (batch):", self._di_ref_label_batch)
-
-        return w
-
-    def _make_psd_tab(self) -> QWidget:
-        w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
-        form.setVerticalSpacing(t.SP_2)
-        form.setHorizontalSpacing(t.SP_3)
-        psd = self._state.settings.detection.psd
-
-        self._psd_fmin = QDoubleSpinBox()
-        self._psd_fmin.setRange(0, 250_000)
-        self._psd_fmin.setSuffix(" Hz")
-        self._psd_fmin.setValue(psd.fcutMin)
-        form.addRow("fcutMin:", self._psd_fmin)
-
-        self._psd_fmax = QDoubleSpinBox()
-        self._psd_fmax.setRange(0, 250_000)
-        self._psd_fmax.setSuffix(" Hz")
-        self._psd_fmax.setValue(psd.fcutMax)
-        form.addRow("fcutMax:", self._psd_fmax)
-
-        self._psd_seg = QSpinBox()
-        self._psd_seg.setRange(256, 65_536)
-        self._psd_seg.setValue(psd.segmentLength)
-        form.addRow("segmentLength (samples):", self._psd_seg)
-
-        self._psd_overlap = QDoubleSpinBox()
-        self._psd_overlap.setRange(0.0, 0.99)
-        self._psd_overlap.setDecimals(3)
-        self._psd_overlap.setValue(psd.overlapFactor)
-        form.addRow("overlapFactor:", self._psd_overlap)
-
-        self._psd_k = QDoubleSpinBox()
-        self._psd_k.setRange(0.0, 10.0)
-        self._psd_k.setDecimals(4)
-        self._psd_k.setValue(psd.k)
-        form.addRow("k (threshold scale):", self._psd_k)
-
-        self._psd_w = QDoubleSpinBox()
-        self._psd_w.setRange(0.0, 1.0)
-        self._psd_w.setDecimals(4)
-        self._psd_w.setValue(psd.w)
-        form.addRow("w (noise weight):", self._psd_w)
-
-        return w
-
-    def _make_bscd_tab(self) -> QWidget:
-        w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
-        form.setVerticalSpacing(t.SP_2)
-        form.setHorizontalSpacing(t.SP_3)
-        bscd = self._state.settings.detection.bscd
-
-        self._bscd_fmin = QDoubleSpinBox()
-        self._bscd_fmin.setRange(0, 250_000)
-        self._bscd_fmin.setSuffix(" Hz")
-        self._bscd_fmin.setValue(bscd.fcutMin)
-        form.addRow("fcutMin:", self._bscd_fmin)
-
-        self._bscd_fmax = QDoubleSpinBox()
-        self._bscd_fmax.setRange(0, 250_000)
-        self._bscd_fmax.setSuffix(" Hz")
-        self._bscd_fmax.setValue(bscd.fcutMax)
-        form.addRow("fcutMax:", self._bscd_fmax)
-
-        self._bscd_wlen = QDoubleSpinBox()
-        self._bscd_wlen.setRange(0.0, 1.0)
-        self._bscd_wlen.setDecimals(4)
-        self._bscd_wlen.setSuffix(" s")
-        self._bscd_wlen.setValue(bscd.wlen)
-        form.addRow("Window length (wlen):", self._bscd_wlen)
-
-        self._bscd_ma = QSpinBox()
-        self._bscd_ma.setRange(1, 100_000)
-        self._bscd_ma.setValue(bscd.maWindow)
-        form.addRow("Moving average window:", self._bscd_ma)
-
-        self._bscd_noise = QSpinBox()
-        self._bscd_noise.setRange(1, 100_000)
-        self._bscd_noise.setValue(bscd.noiseWindow)
-        form.addRow("Noise window:", self._bscd_noise)
-
-        self._bscd_local = QSpinBox()
-        self._bscd_local.setRange(1, 100_000)
-        self._bscd_local.setValue(bscd.localWindow)
-        form.addRow("Local window:", self._bscd_local)
-
-        self._bscd_k = QDoubleSpinBox()
-        self._bscd_k.setRange(0.0, 10.0)
-        self._bscd_k.setDecimals(4)
-        self._bscd_k.setValue(bscd.k)
-        form.addRow("k (threshold scale):", self._bscd_k)
-
-        self._bscd_w = QDoubleSpinBox()
-        self._bscd_w.setRange(0.0, 1.0)
-        self._bscd_w.setDecimals(4)
-        self._bscd_w.setValue(bscd.w)
-        form.addRow("w (noise weight):", self._bscd_w)
-
-        return w
-
-    def _make_rbd_tab(self) -> QWidget:
-        w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
-        form.setVerticalSpacing(t.SP_2)
-        form.setHorizontalSpacing(t.SP_3)
-        rbd = self._state.settings.detection.rbd
-
-        self._rbd_fmin = QDoubleSpinBox()
-        self._rbd_fmin.setRange(0, 250_000)
-        self._rbd_fmin.setSuffix(" Hz")
-        self._rbd_fmin.setValue(rbd.fcutMin)
-        form.addRow("fcutMin:", self._rbd_fmin)
-
-        self._rbd_fmax = QDoubleSpinBox()
-        self._rbd_fmax.setRange(0, 250_000)
-        self._rbd_fmax.setSuffix(" Hz")
-        self._rbd_fmax.setValue(rbd.fcutMax)
-        form.addRow("fcutMax:", self._rbd_fmax)
-
-        self._rbd_wlen = QDoubleSpinBox()
-        self._rbd_wlen.setRange(0.0, 1.0)
-        self._rbd_wlen.setDecimals(4)
-        self._rbd_wlen.setSuffix(" s")
-        self._rbd_wlen.setValue(rbd.wlen)
-        form.addRow("Window length (wlen):", self._rbd_wlen)
-
-        self._rbd_ar_left = QSpinBox()
-        self._rbd_ar_left.setRange(0, 50)
-        self._rbd_ar_left.setValue(rbd.AR_order_left)
-        form.addRow("AR order (left):", self._rbd_ar_left)
-
-        self._rbd_ar_right = QSpinBox()
-        self._rbd_ar_right.setRange(0, 50)
-        self._rbd_ar_right.setValue(rbd.AR_order_right)
-        form.addRow("AR order (right):", self._rbd_ar_right)
-
-        self._rbd_bayes_order = QSpinBox()
-        self._rbd_bayes_order.setRange(0, 50)
-        self._rbd_bayes_order.setValue(rbd.Bayesian_Evidence_order)
-        form.addRow("Bayesian Evidence order:", self._rbd_bayes_order)
-
-        self._rbd_dynamic_scaling = QDoubleSpinBox()
-        self._rbd_dynamic_scaling.setRange(0.0, 10.0)
-        self._rbd_dynamic_scaling.setDecimals(4)
-        self._rbd_dynamic_scaling.setValue(rbd.dynamicScaling)
-        form.addRow("Dynamic scaling:", self._rbd_dynamic_scaling)
-
-        self._rbd_smooth_rbd = QDoubleSpinBox()
-        self._rbd_smooth_rbd.setRange(0.0, 1.0)
-        self._rbd_smooth_rbd.setDecimals(4)
-        self._rbd_smooth_rbd.setSuffix(" s")
-        self._rbd_smooth_rbd.setValue(rbd.smoothingWindowRBD)
-        form.addRow("Smoothing window (RBD):", self._rbd_smooth_rbd)
-
-        self._rbd_smooth_thr = QDoubleSpinBox()
-        self._rbd_smooth_thr.setRange(0.0, 1.0)
-        self._rbd_smooth_thr.setDecimals(4)
-        self._rbd_smooth_thr.setSuffix(" s")
-        self._rbd_smooth_thr.setValue(rbd.smoothingWindowThr)
-        form.addRow("Smoothing window (threshold):", self._rbd_smooth_thr)
-
-        self._rbd_amplitude = QDoubleSpinBox()
-        self._rbd_amplitude.setRange(0.0, 1.0)
-        self._rbd_amplitude.setDecimals(4)
-        self._rbd_amplitude.setValue(rbd.amplitudeThreshold)
-        form.addRow("Amplitude threshold:", self._rbd_amplitude)
-
-        return w
-
-    def _make_ml_tab(self) -> QWidget:
-        w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
-        form.setVerticalSpacing(t.SP_2)
-        form.setHorizontalSpacing(t.SP_3)
-        ml = self._state.settings.detection.ml
-
-        # Model path with browse button
-        model_row = QHBoxLayout()
-        self._ml_model_path = QLineEdit()
-        self._ml_model_path.setText(ml.modelPath)
-        browse_btn = QPushButton("Browse…")
-        browse_btn.clicked.connect(self._browse_ml_model)
-        model_row.addWidget(self._ml_model_path)
-        model_row.addWidget(browse_btn)
-        form.addRow("Model path (.joblib):", model_row)
-
-        self._ml_sensitivity = QDoubleSpinBox()
-        self._ml_sensitivity.setRange(0.0, 1.0)
-        self._ml_sensitivity.setDecimals(4)
-        self._ml_sensitivity.setValue(ml.sensitivity)
-        form.addRow("Sensitivity (0-1):", self._ml_sensitivity)
-
-        self._ml_min_duration = QDoubleSpinBox()
-        self._ml_min_duration.setRange(0.0, 10.0)
-        self._ml_min_duration.setDecimals(4)
-        self._ml_min_duration.setSuffix(" s")
-        self._ml_min_duration.setValue(ml.minEventDuration)
-        form.addRow("Min event duration:", self._ml_min_duration)
-
-        return w
-
-    def _browse_ml_model(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select ML model", "", "Joblib files (*.joblib)"
+        self._field(
+            form, "Default reference labels folder (batch):", self._di_ref_label_batch,
+            "Folder of reference-label files automatically loaded at startup when in batch mode.",
+            indicator=False,
         )
-        if path:
-            self._ml_model_path.setText(path)
+
+        return w
+
+    def _make_plugin_tab(self, params) -> tuple[QWidget, dict[str, QWidget]]:
+        """Build a Settings sub-tab for one detector/classifier's Params model
+        (auto-generated — see gui._plugin_form.build_params_form)."""
+        w = QWidget()
+        form = self._new_form(w)
+        widgets = pf.build_params_form(form, params, self._field, self._range_indicator)
+        return w, widgets
 
     def _make_post_tab(self) -> QWidget:
         w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
-        form.setVerticalSpacing(t.SP_2)
-        form.setHorizontalSpacing(t.SP_3)
+        form = self._new_form(w)
         post = self._state.settings.detection.post
 
         self._post_gap = QDoubleSpinBox()
@@ -430,48 +392,71 @@ class SettingsTab(QWidget):
         self._post_gap.setDecimals(4)
         self._post_gap.setSuffix(" s")
         self._post_gap.setValue(post.maxGapToMerge)
-        form.addRow("Max gap to merge:", self._post_gap)
+        self._field(
+            form, "Max gap to merge:", self._post_gap,
+            "Detections separated by a gap shorter than this are merged into one label.",
+            "Used by the \"Merge Close Labels\" post-processing step in the Detection tab.",
+        )
 
         self._post_min_len = QDoubleSpinBox()
         self._post_min_len.setRange(0.0, 1.0)
         self._post_min_len.setDecimals(4)
         self._post_min_len.setSuffix(" s")
         self._post_min_len.setValue(post.minLabelLength)
-        form.addRow("Min label length:", self._post_min_len)
+        self._field(
+            form, "Min label length:", self._post_min_len,
+            "Labels shorter than this are discarded after merging.",
+            "Used by the \"Remove Short Labels\" post-processing step in the Detection tab.",
+        )
 
         return w
 
     def _make_label_edit_tab(self) -> QWidget:
         w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
-        form.setVerticalSpacing(t.SP_2)
-        form.setHorizontalSpacing(t.SP_3)
+        form = self._new_form(w)
         label_edit = self._state.settings.label_edit
 
         self._le_window = QSpinBox()
         self._le_window.setRange(64, 16_384)
         self._le_window.setValue(label_edit.spectrogram_window)
-        form.addRow("Spectrogram window (samples):", self._le_window)
+        self._field(
+            form, "Spectrogram window (samples):", self._le_window,
+            "Number of audio samples per FFT window used to draw each label's spectrogram.",
+            "Larger windows sharpen frequency detail but blur fast time changes; "
+            "smaller windows do the opposite.",
+        )
 
         self._le_overlap = QSpinBox()
         self._le_overlap.setRange(0, 16_384)
         self._le_overlap.setValue(label_edit.spectrogram_overlap)
-        form.addRow("Spectrogram overlap (samples):", self._le_overlap)
+        self._field(
+            form, "Spectrogram overlap (samples):", self._le_overlap,
+            "Samples shared between consecutive FFT windows. Must be smaller than the window size.",
+            "Higher overlap gives a smoother-looking spectrogram at the cost of more computation.",
+        )
 
         self._le_fmin = QDoubleSpinBox()
         self._le_fmin.setRange(0.0, 250.0)
         self._le_fmin.setDecimals(1)
         self._le_fmin.setSuffix(" kHz")
         self._le_fmin.setValue(label_edit.spectrogram_min_freq_khz)
-        form.addRow("Min display frequency:", self._le_fmin)
+        self._field(
+            form, "Min display frequency:", self._le_fmin,
+            "Lower bound of the frequency axis shown for each label.",
+            indicator=False,
+        )
 
         self._le_fmax = QDoubleSpinBox()
         self._le_fmax.setRange(0.0, 250.0)
         self._le_fmax.setDecimals(1)
         self._le_fmax.setSuffix(" kHz")
         self._le_fmax.setValue(label_edit.spectrogram_max_freq_khz)
-        form.addRow("Max display frequency:", self._le_fmax)
+        self._field(
+            form, "Max display frequency:", self._le_fmax,
+            "Upper bound of the frequency axis shown for each label.",
+            indicator=False,
+        )
+        self._range_indicator(form, self._le_fmin, self._le_fmax)
 
         self._le_colormap = QComboBox()
         colormaps = ["parula", "turbo", "hsv", "hot", "cool", "spring", "summer", "autumn", "winter", "gray", "bone", "copper", "pink", "jet", "invgray"]
@@ -479,20 +464,25 @@ class SettingsTab(QWidget):
         idx = self._le_colormap.findText(label_edit.colormap)
         if idx >= 0:
             self._le_colormap.setCurrentIndex(idx)
-        form.addRow("Colormap:", self._le_colormap)
+        self._field(
+            form, "Colormap:", self._le_colormap,
+            "Color palette used to render spectrogram intensity.",
+        )
 
         self._le_classifications = QLineEdit()
         self._le_classifications.setText(label_edit.classifications)
-        form.addRow("Classifications (comma-separated):", self._le_classifications)
+        self._field(
+            form, "Classifications (comma-separated):", self._le_classifications,
+            "Valid call-type labels offered in the Label Edit tab's class dropdown.",
+            "Example: d,sk,5,5t,5w,c5 — edit freely, just keep the values comma-separated.",
+            indicator=False,
+        )
 
         return w
 
     def _make_appearance_tab(self) -> QWidget:
         w = QWidget()
-        form = QFormLayout(w)
-        form.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
-        form.setVerticalSpacing(t.SP_2)
-        form.setHorizontalSpacing(t.SP_3)
+        form = self._new_form(w)
 
         self._theme_combo = QComboBox()
         self._theme_combo.addItem("System", "system")
@@ -500,7 +490,11 @@ class SettingsTab(QWidget):
         self._theme_combo.addItem("Dark", "dark")
         self._theme_combo.setCurrentIndex(max(self._theme_combo.findData(t.get_mode()), 0))
         self._theme_combo.currentIndexChanged.connect(self._on_theme_mode_changed)
-        form.addRow("Color mode:", self._theme_combo)
+        self._field(
+            form, "Color mode:", self._theme_combo,
+            "Choose the app's color scheme.",
+            "\"System\" follows your OS's light/dark setting and updates automatically if it changes.",
+        )
 
         # WP27 THEME DECISION (resolved): MATLAB's Light/Gray/Custom presets with
         # 4 raw RGB color pickers (formerly config.ThemeSettings) were deliberately
@@ -511,6 +505,114 @@ class SettingsTab(QWidget):
 
     def _on_theme_mode_changed(self, index: int) -> None:
         t.set_mode(self._theme_combo.itemData(index))
+
+    # ── Shortcuts sub-tab ─────────────────────────────────────────────────
+
+    def _make_shortcuts_tab(self) -> QWidget:
+        w = QWidget()
+        outer = QVBoxLayout(w)
+        outer.setContentsMargins(t.SP_4, t.SP_4, t.SP_4, t.SP_4)
+        outer.setSpacing(t.SP_3)
+
+        intro = QLabel(
+            "Click a shortcut field, then press the new key combination — it saves "
+            "immediately and takes effect app-wide. Shortcuts that clash with another "
+            "action are flagged below; only one will actually fire."
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet(f"color: {t.TEXT_SECONDARY}; font-size: {t.TEXT_XS}px;")
+        outer.addWidget(intro)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(t.SP_3)
+        grid.setVerticalSpacing(t.SP_2)
+        grid.setColumnStretch(4, 1)
+
+        header_style = f"color: {t.TEXT_SECONDARY}; font-weight: 600; font-size: {t.TEXT_XS}px;"
+        for col, text in enumerate(["Action", "Where", "Shortcut", "", ""]):
+            h = QLabel(text)
+            h.setStyleSheet(header_style)
+            grid.addWidget(h, 0, col)
+
+        self._shortcut_edits: dict[str, QKeySequenceEdit] = {}
+        self._shortcut_warnings: dict[str, QLabel] = {}
+
+        for row, spec in enumerate(shortcuts.SHORTCUTS, start=1):
+            name_label = QLabel(spec.label)
+            name_label.setToolTip(spec.description)
+
+            ctx_label = QLabel(spec.context)
+            ctx_label.setToolTip(spec.description)
+            ctx_label.setStyleSheet(f"color: {t.TEXT_SECONDARY}; font-size: {t.TEXT_XS}px;")
+
+            edit = QKeySequenceEdit(shortcuts.get_shortcut(spec.id))
+            edit.setMaximumSequenceLength(1)
+            edit.setToolTip(f"{spec.description}\n\nClick, then press the new key combination.")
+            edit.keySequenceChanged.connect(
+                lambda seq, sid=spec.id: self._on_shortcut_edited(sid, seq)
+            )
+
+            reset_btn = QPushButton("Reset")
+            reset_btn.setFixedWidth(64)
+            reset_btn.setToolTip(f"Restore the default shortcut ({spec.default}).")
+            reset_btn.clicked.connect(lambda _checked, sid=spec.id: self._on_shortcut_reset(sid))
+
+            warn = QLabel("")
+            warn.setStyleSheet(f"color: {t.DANGER}; font-size: {t.TEXT_XS}px;")
+            warn.setWordWrap(True)
+
+            grid.addWidget(name_label, row, 0)
+            grid.addWidget(ctx_label, row, 1)
+            grid.addWidget(edit, row, 2)
+            grid.addWidget(reset_btn, row, 3)
+            grid.addWidget(warn, row, 4)
+
+            self._shortcut_edits[spec.id] = edit
+            self._shortcut_warnings[spec.id] = warn
+
+        outer.addLayout(grid)
+        outer.addStretch()
+
+        reset_all_row = QHBoxLayout()
+        reset_all_row.addStretch()
+        reset_all_btn = QPushButton("Reset all shortcuts to defaults")
+        reset_all_btn.setToolTip("Restore every shortcut above to its shipped default.")
+        reset_all_btn.clicked.connect(self._on_shortcuts_reset_all)
+        reset_all_row.addWidget(reset_all_btn)
+        outer.addLayout(reset_all_row)
+
+        self._refresh_shortcut_conflicts()
+        return w
+
+    def _on_shortcut_edited(self, action_id: str, seq) -> None:
+        shortcuts.set_shortcut(action_id, seq)
+        self._refresh_shortcut_conflicts()
+
+    def _on_shortcut_reset(self, action_id: str) -> None:
+        shortcuts.reset_shortcut(action_id)
+        edit = self._shortcut_edits[action_id]
+        edit.blockSignals(True)
+        edit.setKeySequence(shortcuts.get_shortcut(action_id))
+        edit.blockSignals(False)
+        self._refresh_shortcut_conflicts()
+
+    def _on_shortcuts_reset_all(self) -> None:
+        shortcuts.reset_all()
+        for sid, edit in self._shortcut_edits.items():
+            edit.blockSignals(True)
+            edit.setKeySequence(shortcuts.get_shortcut(sid))
+            edit.blockSignals(False)
+        self._refresh_shortcut_conflicts()
+
+    def _refresh_shortcut_conflicts(self) -> None:
+        for sid, warn in self._shortcut_warnings.items():
+            seq = self._shortcut_edits[sid].keySequence()
+            conflicting = shortcuts.conflicts_with(sid, seq)
+            if conflicting:
+                names = ", ".join(shortcuts.label_for(c) for c in conflicting)
+                warn.setText(f"⚠ also bound to: {names}")
+            else:
+                warn.setText("")
 
     # ── Actions ───────────────────────────────────────────────────────────
 
@@ -542,44 +644,15 @@ class SettingsTab(QWidget):
         vis.sonification_st             = self._viz_sonif_st.value()
         vis.sonification_slowdown       = self._viz_sonif_slowdown.value()
 
-        # PSD
-        psd = self._state.settings.detection.psd
-        psd.fcutMin       = self._psd_fmin.value()
-        psd.fcutMax       = self._psd_fmax.value()
-        psd.segmentLength = self._psd_seg.value()
-        psd.overlapFactor = self._psd_overlap.value()
-        psd.k             = self._psd_k.value()
-        psd.w             = self._psd_w.value()
+        # Detectors (one Params sub-tab per registered plugin — see _plugin_form)
+        for detector_id, widgets in self._detector_widgets.items():
+            params_cls = AbstractDetector.get(detector_id).Params
+            self._state.settings.detection.set_params(detector_id, pf.read_params_form(params_cls, widgets))
 
-        # BSCD
-        bscd = self._state.settings.detection.bscd
-        bscd.fcutMin       = self._bscd_fmin.value()
-        bscd.fcutMax       = self._bscd_fmax.value()
-        bscd.wlen          = self._bscd_wlen.value()
-        bscd.maWindow      = self._bscd_ma.value()
-        bscd.noiseWindow   = self._bscd_noise.value()
-        bscd.localWindow   = self._bscd_local.value()
-        bscd.k             = self._bscd_k.value()
-        bscd.w             = self._bscd_w.value()
-
-        # RBD
-        rbd = self._state.settings.detection.rbd
-        rbd.fcutMin                  = self._rbd_fmin.value()
-        rbd.fcutMax                  = self._rbd_fmax.value()
-        rbd.wlen                     = self._rbd_wlen.value()
-        rbd.AR_order_left            = self._rbd_ar_left.value()
-        rbd.AR_order_right           = self._rbd_ar_right.value()
-        rbd.Bayesian_Evidence_order  = self._rbd_bayes_order.value()
-        rbd.dynamicScaling           = self._rbd_dynamic_scaling.value()
-        rbd.smoothingWindowRBD       = self._rbd_smooth_rbd.value()
-        rbd.smoothingWindowThr       = self._rbd_smooth_thr.value()
-        rbd.amplitudeThreshold       = self._rbd_amplitude.value()
-
-        # ML
-        ml = self._state.settings.detection.ml
-        ml.modelPath       = self._ml_model_path.text()
-        ml.sensitivity     = self._ml_sensitivity.value()
-        ml.minEventDuration = self._ml_min_duration.value()
+        # Classifiers
+        for classifier_id, widgets in self._classifier_widgets.items():
+            params_cls = AbstractClassifier.get(classifier_id).Params
+            self._state.settings.classification.set_params(classifier_id, pf.read_params_form(params_cls, widgets))
 
         # Post-processing
         post = self._state.settings.detection.post
@@ -624,10 +697,6 @@ class SettingsTab(QWidget):
         """Sync all widgets after settings are replaced (e.g. via Load)."""
         data_input = self._state.settings.data_input
         vis = self._state.settings.visualization
-        psd = self._state.settings.detection.psd
-        bscd = self._state.settings.detection.bscd
-        rbd = self._state.settings.detection.rbd
-        ml = self._state.settings.detection.ml
         post = self._state.settings.detection.post
         label_edit = self._state.settings.label_edit
 
@@ -687,75 +756,11 @@ class SettingsTab(QWidget):
         self._viz_show_loading.setCurrentIndex(0 if vis.show_loading_dialog else 1)
         self._viz_show_loading.blockSignals(False)
 
-        # PSD
-        for widget, value in [
-            (self._psd_fmin,     psd.fcutMin),
-            (self._psd_fmax,     psd.fcutMax),
-            (self._psd_seg,      psd.segmentLength),
-            (self._psd_overlap,  psd.overlapFactor),
-            (self._psd_k,        psd.k),
-            (self._psd_w,        psd.w),
-        ]:
-            widget.blockSignals(True)
-            widget.setValue(value)
-            widget.blockSignals(False)
-
-        # BSCD
-        for widget, value in [
-            (self._bscd_fmin,     bscd.fcutMin),
-            (self._bscd_fmax,     bscd.fcutMax),
-            (self._bscd_wlen,     bscd.wlen),
-            (self._bscd_k,        bscd.k),
-            (self._bscd_w,        bscd.w),
-        ]:
-            widget.blockSignals(True)
-            widget.setValue(value)
-            widget.blockSignals(False)
-
-        for widget, value in [
-            (self._bscd_ma,       bscd.maWindow),
-            (self._bscd_noise,    bscd.noiseWindow),
-            (self._bscd_local,    bscd.localWindow),
-        ]:
-            widget.blockSignals(True)
-            widget.setValue(value)
-            widget.blockSignals(False)
-
-        # RBD
-        for widget, value in [
-            (self._rbd_fmin,            rbd.fcutMin),
-            (self._rbd_fmax,            rbd.fcutMax),
-            (self._rbd_wlen,            rbd.wlen),
-            (self._rbd_dynamic_scaling, rbd.dynamicScaling),
-            (self._rbd_smooth_rbd,      rbd.smoothingWindowRBD),
-            (self._rbd_smooth_thr,      rbd.smoothingWindowThr),
-            (self._rbd_amplitude,       rbd.amplitudeThreshold),
-        ]:
-            widget.blockSignals(True)
-            widget.setValue(value)
-            widget.blockSignals(False)
-
-        for widget, value in [
-            (self._rbd_ar_left,     rbd.AR_order_left),
-            (self._rbd_ar_right,    rbd.AR_order_right),
-            (self._rbd_bayes_order, rbd.Bayesian_Evidence_order),
-        ]:
-            widget.blockSignals(True)
-            widget.setValue(value)
-            widget.blockSignals(False)
-
-        # ML
-        self._ml_model_path.blockSignals(True)
-        self._ml_model_path.setText(ml.modelPath)
-        self._ml_model_path.blockSignals(False)
-
-        for widget, value in [
-            (self._ml_sensitivity, ml.sensitivity),
-            (self._ml_min_duration, ml.minEventDuration),
-        ]:
-            widget.blockSignals(True)
-            widget.setValue(value)
-            widget.blockSignals(False)
+        # Detectors / classifiers
+        for detector_id, widgets in self._detector_widgets.items():
+            pf.reload_params_form(self._state.settings.detection.params_for(detector_id), widgets)
+        for classifier_id, widgets in self._classifier_widgets.items():
+            pf.reload_params_form(self._state.settings.classification.params_for(classifier_id), widgets)
 
         # Post-processing
         for widget, value in [

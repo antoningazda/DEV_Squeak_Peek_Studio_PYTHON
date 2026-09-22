@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from squeak_peek.audio.sonify import sonify_segment
 from squeak_peek.labels.model import Label
 
+from . import _shortcuts as shortcuts
 from . import _theme as t
 from ._spectrogram_widget import SpectrogramWidget
 from ._state import AppState
@@ -37,7 +38,7 @@ class VisualizationTab(QWidget):
         t.signal.changed.connect(self._on_theme_changed)
 
         # Sonification playback state
-        self._playback_stream: Any = None
+        self._is_playing: bool = False
         self._playback_timer: QTimer | None = None
         self._playback_start_time: float = 0.0
         self._playback_duration: float = 0.0
@@ -59,50 +60,73 @@ class VisualizationTab(QWidget):
         nav_row = QHBoxLayout(nav)
         nav_row.setSpacing(t.SP_3)
 
-        nav_row.addWidget(QLabel("Start (s):"))
+        start_lbl = QLabel("Start (s):")
+        start_tip = "Start time of the segment currently displayed."
+        start_lbl.setToolTip(start_tip)
+        nav_row.addWidget(start_lbl)
         self._start_spin = QDoubleSpinBox()
         self._start_spin.setRange(0.0, 99_999.0)
         self._start_spin.setDecimals(3)
         self._start_spin.setSingleStep(0.1)
         self._start_spin.setMinimumWidth(90)
+        self._start_spin.setToolTip(start_tip)
         self._start_spin.valueChanged.connect(self._on_start_changed)
         nav_row.addWidget(self._start_spin)
 
-        nav_row.addWidget(QLabel("Length (s):"))
+        len_lbl = QLabel("Length (s):")
+        len_tip = "Length of the segment currently displayed. Also set in Settings → Visualization."
+        len_lbl.setToolTip(len_tip)
+        nav_row.addWidget(len_lbl)
         self._len_spin = QDoubleSpinBox()
         self._len_spin.setRange(0.01, 60.0)
         self._len_spin.setDecimals(3)
         self._len_spin.setSingleStep(0.1)
         self._len_spin.setValue(self._state.segment_length)
         self._len_spin.setMinimumWidth(80)
+        self._len_spin.setToolTip(len_tip)
         self._len_spin.valueChanged.connect(self._on_length_changed)
         nav_row.addWidget(self._len_spin)
 
         prev_btn = QPushButton("◀  Prev")
+        prev_btn.setToolTip(
+            f"Move one segment length backward "
+            f"(shortcut: {shortcuts.get_shortcut('prev_segment').toString()})."
+        )
         prev_btn.clicked.connect(self._prev_segment)
         nav_row.addWidget(prev_btn)
 
         next_btn = QPushButton("Next  ▶")
+        next_btn.setToolTip(
+            f"Move one segment length forward "
+            f"(shortcut: {shortcuts.get_shortcut('next_segment').toString()})."
+        )
         next_btn.clicked.connect(self._next_segment)
         nav_row.addWidget(next_btn)
 
         self._sonify_btn = QPushButton("🔊 Sonify")
+        self._sonify_btn.setToolTip(
+            "Play the current segment pitch-shifted and slowed down so ultrasonic calls "
+            "become audible. Adjust the amount in Settings → Visualization."
+        )
         self._sonify_btn.clicked.connect(self._on_sonify_clicked)
         nav_row.addWidget(self._sonify_btn)
 
         nav_row.addStretch()
 
         self._det_cb = QCheckBox("Detected labels")
+        self._det_cb.setToolTip("Show/hide detected-label boxes on the spectrogram.")
         self._det_cb.setChecked(True)
         self._det_cb.stateChanged.connect(self._refresh)
         nav_row.addWidget(self._det_cb)
 
         self._ref_cb = QCheckBox("Reference labels")
+        self._ref_cb.setToolTip("Show/hide reference-label boxes on the spectrogram.")
         self._ref_cb.setChecked(True)
         self._ref_cb.stateChanged.connect(self._refresh)
         nav_row.addWidget(self._ref_cb)
 
         self._pitch_cb = QCheckBox("Pitch trace")
+        self._pitch_cb.setToolTip("Show/hide the estimated pitch (fundamental frequency) overlay.")
         self._pitch_cb.setChecked(True)
         self._pitch_cb.stateChanged.connect(self._refresh)
         nav_row.addWidget(self._pitch_cb)
@@ -148,8 +172,10 @@ class VisualizationTab(QWidget):
             end_time = s.segment_end
             segment_length = end_time - start_time
 
-            # Call sonify_segment
-            sonified = sonify_segment(
+            # Call sonify_segment — it returns audio already correctly
+            # pitch-shifted/time-stretched/resampled, so it's played back
+            # at exactly the sample rate it reports.
+            sonified, target_fs = sonify_segment(
                 audio=s.samples,
                 start_time=start_time,
                 end_time=end_time,
@@ -158,21 +184,6 @@ class VisualizationTab(QWidget):
                 slowdown=vis.sonification_slowdown,
             )
 
-            # Play back the raw samples declaring a fixed 44100 Hz rate —
-            # deliberately NOT a real sample-rate-converting resample.
-            # `sonified` is an array of *sample values* produced at the
-            # analysis rate s.fs (e.g. 250 kHz); MATLAB hands this same
-            # array straight to audioplayer(signal_out, targetFs) without
-            # resampling it. Declaring a playback rate far lower than the
-            # analysis rate is exactly what shifts the ultrasonic content
-            # down into the audible range — a real resample (e.g.
-            # librosa.resample) would reconstruct the waveform and PRESERVE
-            # its (still-ultrasonic) frequency content instead, silently
-            # defeating sonification entirely. Only the pitch-shift/
-            # slowdown parameters inside sonify_segment() and this
-            # deliberate rate mismatch combine to make USV calls audible.
-            target_fs = 44100
-
             # Compute mapping ratio (original duration / stretched output duration)
             dur_out = len(sonified) / target_fs
             ratio = segment_length / dur_out
@@ -180,8 +191,12 @@ class VisualizationTab(QWidget):
             # Disable sonify button during playback
             self._sonify_btn.setEnabled(False)
 
-            # Start playback with sounddevice
-            self._playback_stream = sd.play(sonified, samplerate=target_fs)
+            # Start playback with sounddevice. sd.play() is fire-and-forget —
+            # it returns None, not a stream handle — so "is playback active"
+            # is tracked separately via self._is_playing rather than by
+            # checking its return value.
+            sd.play(sonified, samplerate=target_fs)
+            self._is_playing = True
             self._playback_start_time = time.monotonic()
             self._playback_duration = dur_out
             self._playback_start_cursor = start_time
@@ -201,7 +216,7 @@ class VisualizationTab(QWidget):
     def _on_playback_tick(self) -> None:
         """Update moving cursor line during playback."""
         try:
-            if self._playback_stream is None or self._playback_timer is None:
+            if not self._is_playing or self._playback_timer is None:
                 return
 
             elapsed = time.monotonic() - self._playback_start_time
@@ -250,7 +265,8 @@ class VisualizationTab(QWidget):
         if self._playback_wave_line is not None:
             self._spec._wave_plot.removeItem(self._playback_wave_line)
             self._playback_wave_line = None
-        self._playback_stream = None
+        sd.stop()
+        self._is_playing = False
         self._sonify_btn.setEnabled(True)
 
     def _on_spectrogram_right_clicked(self, clicked_time: float) -> None:

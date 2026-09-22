@@ -9,8 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from squeak_peek.config import MLParams
-from squeak_peek.detectors.ml import MLDetector
+from squeak_peek.detectors.ml import MLDetector, MLParams
 from squeak_peek.labels.metrics import compare_labels
 from squeak_peek.labels.model import Label
 from squeak_peek.ml.train import save_model, train_model

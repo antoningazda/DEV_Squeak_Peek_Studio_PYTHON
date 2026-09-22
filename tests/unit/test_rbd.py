@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from squeak_peek.config import RBDParams
-from squeak_peek.detectors.rbd import RBDDetector, rbd
+from squeak_peek.detectors.rbd import RBDDetector, RBDParams, rbd
 from squeak_peek.labels.model import Label
 
 

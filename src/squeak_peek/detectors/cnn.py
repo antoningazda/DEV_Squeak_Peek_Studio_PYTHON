@@ -13,15 +13,43 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-import torch
+from pydantic import BaseModel, Field
 
 from squeak_peek.cnn.spectrogram_image import signal_to_image
-from squeak_peek.cnn.train import load_checkpoint
-from squeak_peek.config import CNNParams
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.labels.model import Label
 
+# torch and squeak_peek.cnn.train are imported inside the methods that need
+# them: detectors/__init__.py imports every module in this package for its
+# registration side effect, so a module-level torch import here would make
+# the whole app unusable for anyone without the optional 'cnn' extra.
+
 _INFERENCE_BATCH = 8
+
+
+class CNNParams(BaseModel):
+    """Runtime parameters for the CNN (Faster R-CNN) detector."""
+
+    modelPath: str = Field(
+        "",
+        description="Path to a trained Faster R-CNN checkpoint (.pt) used for detection.",
+        json_schema_extra={"widget": "file", "file_filter": "PyTorch checkpoints (*.pt)"},
+    )
+    minEventDuration: float = Field(
+        0.003, ge=0.0, le=10.0,
+        description="Shortest event kept after merging overlapping tile detections.",
+        json_schema_extra={"unit": "s", "decimals": 4},
+    )
+    sensitivity: float = Field(
+        0.5, ge=0.0, le=1.0,
+        description="Box-score cutoff for accepting a predicted call.",
+        json_schema_extra={
+            "decimals": 4,
+            "caption": "Lower sensitivity finds more (and weaker) calls; higher sensitivity keeps only confident detections.",
+        },
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 def _nms_by_time(boxes: list[tuple[float, float, float, float, float]], iou_thresh: float = 0.3):
@@ -46,8 +74,17 @@ def _nms_by_time(boxes: list[tuple[float, float, float, float, float]], iou_thre
 class CNNDetector(AbstractDetector):
     """Faster R-CNN sliding-tile USV detector."""
 
-    def __init__(self, params: CNNParams):
-        self.params = params
+    id = "CNN"
+    display_name = "CNN"
+    description = (
+        "Deep-learning (Faster R-CNN) detector predicting a time/frequency box per call. "
+        "Needs the optional 'cnn' extra (pip install squeak-peek-studio[cnn]) and a model "
+        "file configured in Settings -> CNN detector."
+    )
+    Params = CNNParams
+
+    def __init__(self, params: CNNParams) -> None:
+        super().__init__(params)
         self._checkpoint: dict[str, Any] | None = None
 
     def _load(self) -> dict[str, Any]:
@@ -58,11 +95,24 @@ class CNNDetector(AbstractDetector):
                     "(squeak_peek.cnn.train.train_cnn) and point CNNParams.modelPath "
                     "at the saved .pt checkpoint."
                 )
+            try:
+                from squeak_peek.cnn.train import load_checkpoint
+            except ImportError as exc:
+                raise RuntimeError(
+                    "The CNN detector needs torch/torchvision. "
+                    "Install with: pip install squeak-peek-studio[cnn]"
+                ) from exc
             self._checkpoint = load_checkpoint(self.params.modelPath)
         return self._checkpoint
 
     def detect(self, signal: np.ndarray, fs: int) -> list[Label]:
+        # _load() first: it reports a missing model or a missing 'cnn' extra
+        # in plain language, where a bare `import torch` here would surface a
+        # raw ImportError instead.
         checkpoint = self._load()
+
+        import torch
+
         model = checkpoint["model"]
         device = checkpoint["device"]
         tp = checkpoint["tile_params"]
@@ -131,7 +181,3 @@ class CNNDetector(AbstractDetector):
             )
         labels.sort(key=lambda lbl: lbl.start_time)
         return labels
-
-    @property
-    def name(self) -> str:
-        return "CNN"
