@@ -34,6 +34,7 @@ dependencies = [
     # ── GUI ───────────────────────────────────────────────────────────────
     "PyQt6>=6.6,<6.8",        # 6.8+ breaks cocoa plugin on macOS 26
     "pyqtgraph>=0.13",          # GPU-accelerated spectrogram
+    "matplotlib>=3.8",          # Standard colormaps (parula, turbo already hardcoded)
 
     # ── Hyperparameter optimisation ───────────────────────────────────────
     "optuna>=3.5",
