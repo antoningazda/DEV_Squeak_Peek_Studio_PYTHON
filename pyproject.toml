@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "squeak-peek-studio"
-version = "0.0.6"
+dynamic = ["version"]
 description = "Visualization, segmentation and sonification of ultrasonic rodent vocalizations"
 authors = [{ name = "Antonín Gazda", email = "antonin.gazda@gmail.com" }]
 readme = "README.md"
@@ -68,6 +68,12 @@ squeak-peek-cli = "cli.main:cli"
 [tool.setuptools.packages.find]
 where = ["src", "."]
 include = ["squeak_peek*", "cli*"]
+
+# squeak_peek.__version__ is the single source of truth for the app's
+# version (read at runtime by the Info tab and the CLI too) — pyproject.toml
+# just mirrors it here instead of duplicating the number.
+[tool.setuptools.dynamic]
+version = { attr = "squeak_peek.__version__" }
 
 # ── Pytest ────────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]

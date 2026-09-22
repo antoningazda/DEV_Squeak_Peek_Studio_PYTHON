@@ -14,6 +14,7 @@ from pathlib import Path
 import click
 
 import squeak_peek.detectors  # noqa: F401  (registers built-in detectors)
+from squeak_peek import __version__ as APP_VERSION
 from squeak_peek.audio.io import load_wav
 from squeak_peek.config import AppSettings
 from squeak_peek.detectors.base import AbstractDetector
@@ -59,7 +60,7 @@ def _default_output_path(wav_path: Path, detector_name: str) -> Path:
 
 
 @click.group()
-@click.version_option("1.0.0", prog_name="squeak-peek-cli")
+@click.version_option(APP_VERSION, prog_name="squeak-peek-cli")
 def cli() -> None:
     """Squeak Peek Studio — headless batch processing CLI."""
 

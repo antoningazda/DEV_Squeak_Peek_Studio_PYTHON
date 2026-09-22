@@ -54,7 +54,7 @@ class DurationClassifier(AbstractClassifier):
     )
     Params = DurationClassifierParams
 
-    def classify(self, labels: list["Label"], signal: np.ndarray, fs: int) -> list["Label"]:
+    def classify(self, labels: list[Label], signal: np.ndarray, fs: int) -> list[Label]:
         p = self.params
         return [
             replace(lbl, label=p.short_label if lbl.duration < p.threshold else p.long_label)

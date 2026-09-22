@@ -16,6 +16,9 @@ from pathlib import Path
 SPEC_DIR = Path(SPECPATH)
 SRC_DIR = SPEC_DIR.parent / "src"
 
+sys.path.insert(0, str(SRC_DIR))
+from squeak_peek import __version__ as APP_VERSION  # noqa: E402
+
 a = Analysis(
     [str(SPEC_DIR / "launcher.py")],
     pathex=[str(SRC_DIR)],
@@ -61,8 +64,8 @@ if sys.platform == "darwin":
         bundle_identifier="cz.nudz.squeakpeekstudio",
         info_plist={
             "CFBundleName": "Squeak Peek Studio",
-            "CFBundleShortVersionString": "0.0.6",
-            "CFBundleVersion": "0.0.6",
+            "CFBundleShortVersionString": APP_VERSION,
+            "CFBundleVersion": APP_VERSION,
             "NSHighResolutionCapable": True,
             "NSHumanReadableCopyright": "NUDZ",
         },

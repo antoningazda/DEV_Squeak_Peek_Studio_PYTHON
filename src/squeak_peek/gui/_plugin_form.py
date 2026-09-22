@@ -28,8 +28,11 @@ range and the model's validation can never drift apart.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
+from pydantic import BaseModel
+from pydantic.fields import FieldInfo
 from PyQt6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -42,8 +45,6 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QWidget,
 )
-from pydantic import BaseModel
-from pydantic.fields import FieldInfo
 
 FieldRowFn = Callable[..., QWidget]
 RangeIndicatorFn = Callable[[QFormLayout, QWidget, QWidget], None]

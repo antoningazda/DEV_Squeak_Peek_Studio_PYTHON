@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 class AbstractDetector(Plugin):
     """Common interface for all USV detection algorithms."""
 
-    _registry: ClassVar[dict[str, type["AbstractDetector"]]] = {}
+    _registry: ClassVar[dict[str, type[AbstractDetector]]] = {}
 
     def __init__(self, params) -> None:
         """
@@ -44,7 +44,7 @@ class AbstractDetector(Plugin):
         self,
         signal: np.ndarray,
         fs: int,
-    ) -> list["Label"]:
+    ) -> list[Label]:
         """
         Run detection on a mono audio signal.
 

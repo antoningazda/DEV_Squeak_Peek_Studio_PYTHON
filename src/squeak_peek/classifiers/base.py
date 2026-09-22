@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 class AbstractClassifier(Plugin):
     """Common interface for all call-type classification algorithms."""
 
-    _registry: ClassVar[dict[str, type["AbstractClassifier"]]] = {}
+    _registry: ClassVar[dict[str, type[AbstractClassifier]]] = {}
 
     def __init__(self, params) -> None:
         """
@@ -46,10 +46,10 @@ class AbstractClassifier(Plugin):
     @abstractmethod
     def classify(
         self,
-        labels: list["Label"],
+        labels: list[Label],
         signal: np.ndarray,
         fs: int,
-    ) -> list["Label"]:
+    ) -> list[Label]:
         """
         Assign or refine the call-type label of each input event.
 

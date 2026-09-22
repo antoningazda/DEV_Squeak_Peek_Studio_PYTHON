@@ -13,6 +13,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from squeak_peek import __version__ as APP_VERSION
+
 from . import _theme as t
 
 # URLs for the buttons
@@ -57,7 +59,7 @@ class InfoTab(QWidget):
         self._title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._title)
 
-        self._version = QLabel("Version 0.0.6 · Python port")
+        self._version = QLabel(f"Version {APP_VERSION} · Python port")
         self._version.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._version)
 

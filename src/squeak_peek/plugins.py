@@ -43,7 +43,7 @@ class Plugin(ABC):
     description: ClassVar[str] = ""
     Params: ClassVar[type[BaseModel]] = NoParams
 
-    _registry: ClassVar[dict[str, type["Plugin"]]]
+    _registry: ClassVar[dict[str, type[Plugin]]]
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -61,7 +61,7 @@ class Plugin(ABC):
         registry[cls.id] = cls
 
     @classmethod
-    def get(cls, plugin_id: str) -> type["Plugin"]:
+    def get(cls, plugin_id: str) -> type[Plugin]:
         """Look up a registered subclass by its ``id``."""
         try:
             return cls._registry[plugin_id]
@@ -71,6 +71,6 @@ class Plugin(ABC):
             ) from None
 
     @classmethod
-    def all(cls) -> list[type["Plugin"]]:
+    def all(cls) -> list[type[Plugin]]:
         """All registered subclasses, sorted by id."""
         return [cls._registry[k] for k in sorted(cls._registry)]

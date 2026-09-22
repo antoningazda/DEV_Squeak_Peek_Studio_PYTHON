@@ -2887,7 +2887,6 @@ wheels = [
 
 [[package]]
 name = "squeak-peek-studio"
-version = "0.0.6"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
