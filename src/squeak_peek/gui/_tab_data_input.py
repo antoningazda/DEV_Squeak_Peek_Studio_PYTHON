@@ -175,11 +175,6 @@ class DataInputTab(QWidget):
         bottom_row.addWidget(self._load_btn)
         outer.addLayout(bottom_row)
 
-        # Pending paths (set by browse, committed on Load)
-        self._pending_wav: str = ""
-        self._pending_det: str = ""
-        self._pending_ref: str = ""
-
         self._apply_theme()
 
     # ── Mode handling ────────────────────────────────────────────────────
@@ -197,7 +192,6 @@ class DataInputTab(QWidget):
         )
         if path:
             self._wav_edit.setText(path)
-            self._pending_wav = path
 
     def _browse_detected(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -205,7 +199,6 @@ class DataInputTab(QWidget):
         )
         if path:
             self._det_edit.setText(path)
-            self._pending_det = path
 
     def _browse_reference(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -213,7 +206,6 @@ class DataInputTab(QWidget):
         )
         if path:
             self._ref_edit.setText(path)
-            self._pending_ref = path
 
     # ── Browse handlers (batch mode) ───────────────────────────────────────
 
@@ -263,25 +255,33 @@ class DataInputTab(QWidget):
     # ── Load ──────────────────────────────────────────────────────────────
 
     def _load_files(self) -> None:
+        """Load whatever paths are currently in the WAV/Detected/Reference
+        fields — read live from the widgets rather than from a separate
+        shadow variable, so this always reflects what's actually shown
+        (typed, pasted, or set by Browse/autoload), never a stale copy."""
         errors: list[str] = []
 
-        if self._pending_wav:
+        wav_path = self._wav_edit.text().strip()
+        det_path = self._det_edit.text().strip()
+        ref_path = self._ref_edit.text().strip()
+
+        if wav_path:
             try:
-                self._state.load_wav(self._pending_wav)
+                self._state.load_wav(wav_path)
             except Exception as exc:
                 errors.append(f"WAV: {exc}")
 
-        if self._pending_det:
+        if det_path:
             try:
-                labels = load_labels(self._pending_det)
+                labels = load_labels(det_path)
                 self._state.detected_labels = labels
                 self._state.labels_changed.emit()
             except Exception as exc:
                 errors.append(f"Detected labels: {exc}")
 
-        if self._pending_ref:
+        if ref_path:
             try:
-                labels = load_labels(self._pending_ref)
+                labels = load_labels(ref_path)
                 self._state.reference_labels = labels
                 self._state.labels_changed.emit()
             except Exception as exc:
@@ -294,7 +294,7 @@ class DataInputTab(QWidget):
 
     def open_wav(self) -> None:
         self._browse_wav()
-        if self._pending_wav:
+        if self._wav_edit.text().strip():
             self._load_files()
 
     # ── State callbacks ───────────────────────────────────────────────────

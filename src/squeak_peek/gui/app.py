@@ -362,21 +362,18 @@ def _autoload_defaults(state: AppState, data_input_tab: DataInputTab) -> None:
         if data_input.default_usv_single:
             wav_path = Path(data_input.default_usv_single)
             if wav_path.exists():
-                data_input_tab._pending_wav = str(wav_path)
                 data_input_tab._wav_edit.setText(str(wav_path))
                 files_to_load.append(f"WAV: {wav_path}")
 
         if data_input.default_label_single:
             det_path = Path(data_input.default_label_single)
             if det_path.exists():
-                data_input_tab._pending_det = str(det_path)
                 data_input_tab._det_edit.setText(str(det_path))
                 files_to_load.append(f"Detected labels: {det_path}")
 
         if data_input.default_reference_label_single:
             ref_path = Path(data_input.default_reference_label_single)
             if ref_path.exists():
-                data_input_tab._pending_ref = str(ref_path)
                 data_input_tab._ref_edit.setText(str(ref_path))
                 files_to_load.append(f"Reference labels: {ref_path}")
 
