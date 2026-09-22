@@ -38,8 +38,9 @@ def _load_font(size: int) -> ImageFont.ImageFont:
     # names like "Arial.ttf" only resolve on systems where PIL's own font
     # search path happens to include that font, which isn't guaranteed.
     try:
-        import matplotlib
         from pathlib import Path
+
+        import matplotlib
 
         font_path = (
             Path(matplotlib.__file__).parent
