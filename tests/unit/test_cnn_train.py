@@ -74,6 +74,16 @@ class TestTrainCnn:
         assert info["n_tiles_train"] > 0
         assert checkpoint["tile_params"]["window_s"] == 0.5
 
+    def test_reported_loss_stays_finite(self, tiny_checkpoint):
+        """
+        A batch of entirely call-free tiles makes a trained RPN emit no
+        proposals, and torchvision's ROI-head loss then divides by a zero
+        proposal count, yielding NaN. Those terms must not reach the
+        reported loss, or the whole training curve reads as NaN.
+        """
+        checkpoint, _ = tiny_checkpoint
+        assert all(np.isfinite(x) for x in checkpoint["training_info"]["epoch_losses"])
+
     def test_save_and_load_roundtrip(self, tiny_checkpoint):
         checkpoint, tmp_path = tiny_checkpoint
         path = tmp_path / "model.pt"

@@ -22,9 +22,18 @@ def signal_to_image(
     *,
     segment_length: int = 1024,
     overlap_factor: float = 0.5,
+    dynamic_range_db: float = 40.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Convert an audio window into a normalized spectrogram image.
+
+    Levels are expressed as dB above the tile's own noise floor (its median
+    in-band level), then scaled over `dynamic_range_db`. An absolute dB
+    window cannot work here: recording gain varies between rigs and
+    datasets, so the same call sits at a different absolute level in each
+    (real USVSEG recordings land near -120..-60 dB, a lab with hotter gain
+    would land elsewhere). Referencing the median rather than the peak keeps
+    the mapping stable whether or not a loud call is in the tile.
 
     Returns
     -------
@@ -34,17 +43,24 @@ def signal_to_image(
     times : np.ndarray, shape (T,) — seconds (window-relative), matches
             image columns.
     """
-    f, t, Sxx_dB = compute_stft(signal, fs, segment_length, overlap_factor)
+    # Scale to unit RMS first. compute_stft floors its log at +1e-12, which
+    # on raw USV recordings (in-band levels near -120 dB) would clamp the
+    # noise floor away; unit RMS keeps the power spectrum clear of that
+    # epsilon. The median subtraction below cancels this scaling, so it does
+    # not change the resulting image, only its numerical conditioning.
+    x = np.asarray(signal, dtype=np.float64).ravel()
+    rms = float(np.sqrt(np.mean(x * x)))
+    if rms > 0:
+        x = x / rms
+
+    f, t, Sxx_dB = compute_stft(x, fs, segment_length, overlap_factor)
     f_band, Sxx_band = band_restrict(f, Sxx_dB, fcut_min, fcut_max)
 
     if Sxx_band.size == 0:
         return np.zeros((1, len(t)), dtype=np.float32), f_band, t
 
-    # Fixed dB range rather than per-tile min/max: per-tile normalization
-    # would make the same call look different in a quiet vs. loud window,
-    # which the network should not have to learn around.
-    lo, hi = -80.0, 0.0
-    image = np.clip((Sxx_band - lo) / (hi - lo), 0.0, 1.0).astype(np.float32)
+    noise_floor = float(np.median(Sxx_band))
+    image = np.clip((Sxx_band - noise_floor) / dynamic_range_db, 0.0, 1.0).astype(np.float32)
     return image, f_band, t
 
 

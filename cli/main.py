@@ -252,12 +252,18 @@ def train_cnn_cmd(
     checkpoint = train_cnn(
         list(zip(wav_paths, label_paths)),
         window_s=window_s, hop_s=hop_s, epochs=epochs, batch_size=batch_size, lr=lr, backbone=backbone,
+        progress=True,
     )
     save_checkpoint(checkpoint, output)
 
     info = checkpoint["training_info"]
     click.echo(f"Trained on {info['n_tiles_train']} tiles ({info['n_tiles_val']} held out for validation)")
     click.echo(f"Final epoch loss: {info['final_loss']:.4f}")
+    if info["n_batches_without_proposals"]:
+        click.echo(
+            f"Note: {info['n_batches_without_proposals']} batches of entirely call-free tiles produced no "
+            "region proposals; their ROI-head loss terms were dropped (expected, not an error)."
+        )
     if info["val_ground_truth_boxes"]:
         click.echo(
             f"Validation: {info['val_detections_at_0.5']} detections vs. "

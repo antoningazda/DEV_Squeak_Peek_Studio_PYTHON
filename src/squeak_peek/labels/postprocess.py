@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from squeak_peek.features.tonality import tonality_score
 from squeak_peek.labels.model import Label
 
 
@@ -190,6 +191,55 @@ def filter_low_centroid_labels(
             continue
 
         keep.append(lbl)
+
+    return keep
+
+
+def filter_broadband_labels(
+    labels: list[Label],
+    usv: np.ndarray,
+    fs: int,
+    min_tonality: float = 0.5,
+    *,
+    fcut_min: float = 40_000,
+    fcut_max: float = 120_000,
+    peak_bandwidth_hz: float = 5_000.0,
+) -> list[Label]:
+    """
+    Reject detections whose energy is spread across the band rather than
+    concentrated around a moving peak frequency.
+
+    Rodent USVs are narrowband FM whistles; the false positives that
+    dominate energy- and change-point detectors (cage knocks, bedding
+    rustle, scratching) are broadband. Segments too short to score, or
+    with no in-band energy, are KEPT — this filter only removes
+    detections it can positively judge as broadband.
+
+    Args:
+        labels: List of Label objects
+        usv: Audio signal (mono, 1D array)
+        fs: Sampling rate (Hz)
+        min_tonality: Minimum energy concentration to keep (0-1)
+
+    Returns:
+        Filtered list
+    """
+    if not labels or len(usv) == 0 or fs <= 0:
+        return labels
+
+    keep = []
+    for lbl in labels:
+        i0 = max(0, round(lbl.start_time * fs))
+        i1 = min(len(usv), round(lbl.end_time * fs))
+        if i1 <= i0:
+            keep.append(lbl)
+            continue
+
+        score = tonality_score(
+            usv[i0:i1], fs, fcut_min=fcut_min, fcut_max=fcut_max, peak_bandwidth_hz=peak_bandwidth_hz
+        )
+        if not np.isfinite(score) or score >= min_tonality:
+            keep.append(lbl)
 
     return keep
 

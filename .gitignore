@@ -39,6 +39,7 @@ htmlcov/
 # Models and large data (keep structure, ignore binaries)
 data/models/*.joblib
 data/models/*.pkl
+data/models/*.pt
 data/export/
 data/**/*.wav
 

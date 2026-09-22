@@ -92,6 +92,27 @@ class USVBoxDataset(Dataset):
     def __len__(self) -> int:
         return len(self._tiles)
 
+    def time_split_indices(self, val_fraction: float) -> tuple[list[int], list[int]]:
+        """
+        Split tile indices by time within each recording, reserving the last
+        `val_fraction` of every recording for validation.
+
+        Tiles overlap (hop_s < window_s), so a random split would put tiles
+        sharing the same audio on both sides and report an optimistic
+        validation score. Tiles straddling the cut are dropped.
+        """
+        train_idx: list[int] = []
+        val_idx: list[int] = []
+        for i, (pair_idx, start) in enumerate(self._tiles):
+            fs = self._fs[pair_idx]
+            window_len = round(self.window_s * fs)
+            cutoff = len(self._signals[pair_idx]) * (1.0 - val_fraction)
+            if start >= cutoff:
+                val_idx.append(i)
+            elif start + window_len <= cutoff:
+                train_idx.append(i)
+        return train_idx, val_idx
+
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         pair_idx, start = self._tiles[idx]
         signal = self._signals[pair_idx]

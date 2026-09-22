@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Subset
 
 from squeak_peek.cnn.dataset import USVBoxDataset, collate_fn
 from squeak_peek.cnn.model import Backbone, build_fasterrcnn
@@ -41,12 +41,17 @@ def train_cnn(
     negative_ratio: float = 1.0,
     backbone: Backbone = "mobilenet",
     pretrained_backbone: bool = True,
+    anchor_sizes: tuple[tuple[int, ...], ...] | None = None,
+    aspect_ratios: tuple[tuple[float, ...], ...] | None = None,
+    min_size: int | None = None,
+    max_size: int | None = None,
     epochs: int = 10,
     batch_size: int = 4,
     lr: float = 1e-4,
     val_fraction: float = 0.15,
     device: str | None = None,
     seed: int = 42,
+    progress: bool = False,
 ) -> dict[str, Any]:
     """
     Train a Faster R-CNN USV detector from (wav, label) file pairs.
@@ -62,22 +67,34 @@ def train_cnn(
         negative_ratio=negative_ratio, seed=seed,
     )
 
-    n_val = max(1, round(len(dataset) * val_fraction)) if len(dataset) > 4 else 0
-    n_train = len(dataset) - n_val
-    generator = torch.Generator().manual_seed(seed)
-    train_set, val_set = (
-        random_split(dataset, [n_train, n_val], generator=generator) if n_val else (dataset, None)
-    )
+    train_idx, val_idx = dataset.time_split_indices(val_fraction)
+    if not train_idx:
+        raise ValueError(
+            f"train_cnn: val_fraction={val_fraction} left no training tiles. "
+            "Use a smaller val_fraction or longer recordings."
+        )
+    train_set = Subset(dataset, train_idx)
+    val_set = Subset(dataset, val_idx) if val_idx else None
+    n_train, n_val = len(train_idx), len(val_idx)
 
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 
     dev = _pick_device(device)
-    model = build_fasterrcnn(num_classes=2, backbone=backbone, pretrained_backbone=pretrained_backbone)
+    model_params = {
+        "anchor_sizes": anchor_sizes,
+        "aspect_ratios": aspect_ratios,
+        "min_size": min_size,
+        "max_size": max_size,
+    }
+    model = build_fasterrcnn(
+        num_classes=2, backbone=backbone, pretrained_backbone=pretrained_backbone, **model_params
+    )
     model.to(dev)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
 
     epoch_losses: list[float] = []
-    for _epoch in range(epochs):
+    n_skipped = 0
+    for epoch in range(epochs):
         model.train()
         running_loss, n_batches = 0.0, 0
         for images, targets in train_loader:
@@ -85,15 +102,34 @@ def train_cnn(
             targets = [{k: v.to(dev) for k, v in t.items()} for t in targets]
 
             loss_dict = model(images, targets)
-            loss = sum(loss_dict.values())
+
+            # On a batch of entirely call-free tiles a trained RPN proposes no
+            # regions, and torchvision's ROI-head loss divides by a zero
+            # proposal count -> NaN in loss_classifier/loss_box_reg. Those
+            # terms carry no gradient (empty-tensor reduction), but summing
+            # them would make the reported loss NaN and hide the real curve.
+            # The RPN terms in the same batch are finite and still useful.
+            finite = [v for v in loss_dict.values() if torch.isfinite(v)]
+            if len(finite) < len(loss_dict):
+                n_skipped += 1
+            if not finite:
+                continue
+            loss = sum(finite)
 
             optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
             optimizer.step()
 
             running_loss += float(loss.item())
             n_batches += 1
         epoch_losses.append(running_loss / max(n_batches, 1))
+        if progress:
+            print(
+                f"  epoch {epoch + 1}/{epochs}  loss {epoch_losses[-1]:.4f}"
+                + (f"  ({n_skipped} batches had no proposals)" if n_skipped else ""),
+                flush=True,
+            )
 
     n_val_detections = n_val_gt = 0
     if val_set is not None and len(val_set) > 0:
@@ -108,6 +144,7 @@ def train_cnn(
     return {
         "model_state_dict": model.state_dict(),
         "backbone": backbone,
+        "model_params": model_params,
         "tile_params": {
             "window_s": window_s,
             "fcut_min": fcut_min,
@@ -124,6 +161,7 @@ def train_cnn(
             "n_tiles_val": n_val,
             "epoch_losses": epoch_losses,
             "final_loss": epoch_losses[-1] if epoch_losses else None,
+            "n_batches_without_proposals": n_skipped,
             "val_detections_at_0.5": n_val_detections,
             "val_ground_truth_boxes": n_val_gt,
         },
@@ -145,7 +183,10 @@ def load_checkpoint(path: str | Path, *, device: str | None = None) -> dict[str,
     dev = _pick_device(device)
     checkpoint = torch.load(path, map_location=dev, weights_only=False)
 
-    model = build_fasterrcnn(num_classes=2, backbone=checkpoint["backbone"], pretrained_backbone=False)
+    model = build_fasterrcnn(
+        num_classes=2, backbone=checkpoint["backbone"], pretrained_backbone=False,
+        **checkpoint.get("model_params", {}),
+    )
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(dev)
     model.eval()
