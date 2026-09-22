@@ -172,14 +172,14 @@ class SpectrogramWidget(QWidget):
         if detected_color_name is not None:
             rgba = _get_color_for_name(detected_color_name)
             if rgba:
-                pen_det = pg.mkPen(rgba, width=_LABEL_WIDTH, style=Qt.PenStyle.DashLine)
                 col_det = (int(rgba[0]*255), int(rgba[1]*255), int(rgba[2]*255), int(rgba[3]*255))
+                pen_det = pg.mkPen(col_det, width=_LABEL_WIDTH, style=Qt.PenStyle.DashLine)
 
         if reference_color_name is not None:
             rgba = _get_color_for_name(reference_color_name)
             if rgba:
-                pen_ref = pg.mkPen(rgba, width=_LABEL_WIDTH, style=Qt.PenStyle.DashLine)
                 col_ref = (int(rgba[0]*255), int(rgba[1]*255), int(rgba[2]*255), int(rgba[3]*255))
+                pen_ref = pg.mkPen(col_ref, width=_LABEL_WIDTH, style=Qt.PenStyle.DashLine)
 
         i0 = max(0, int(t_start * fs))
         i1 = min(len(samples), int(t_end * fs))
