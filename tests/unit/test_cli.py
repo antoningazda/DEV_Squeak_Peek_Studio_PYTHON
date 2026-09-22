@@ -116,7 +116,9 @@ class TestTrainCommand:
         assert model_path.exists()
         assert "OOB accuracy" in train_result.output
 
-        settings.detection.ml.modelPath = str(model_path)
+        ml_params = settings.detection.params_for("ML")
+        ml_params.modelPath = str(model_path)
+        settings.detection.set_params("ML", ml_params)
         settings_path = tmp_path / "settings.json"
         settings.save_json(settings_path)
         out_path = tmp_path / "ml_detected.txt"

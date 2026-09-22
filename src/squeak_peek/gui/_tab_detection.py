@@ -21,18 +21,16 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+import squeak_peek.classifiers  # noqa: F401  (registers built-in classifiers)
+import squeak_peek.detectors  # noqa: F401  (registers built-in detectors)
+from squeak_peek.classifiers.base import AbstractClassifier
 from squeak_peek.detectors.base import AbstractDetector
-from squeak_peek.detectors.bscd import BSCDDetector
-from squeak_peek.detectors.ml import MLDetector
-from squeak_peek.detectors.psd import PSDDetector
-from squeak_peek.detectors.rbd import RBDDetector
 from squeak_peek.labels.io import export_labels_detector
 from squeak_peek.labels.postprocess import merge_close_labels, remove_short_labels
 
 from . import _theme as t
 from ._state import AppState
 
-_DETECTORS = ["PSD", "BSCD", "RBD", "ML"]
 _POSTPROCESSING = ["None", "Merge Close Labels", "Remove Short Labels"]
 
 
@@ -58,24 +56,57 @@ class DetectionTab(QWidget):
 
         # ── Detector selection (multi-select) ─────────────────────────────
         det_group = QGroupBox("Detectors (select one or more)")
+        det_group.setToolTip("Each selected detector runs independently and exports its own label file.")
         det_layout = QVBoxLayout(det_group)
         self._det_list = QListWidget()
         self._det_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        for i, name in enumerate(_DETECTORS):
-            item = QListWidgetItem(name)
+        for i, detector_cls in enumerate(AbstractDetector.all()):
+            item = QListWidgetItem(detector_cls.id)
+            item.setToolTip(detector_cls.description)
             if i == 0:
                 item.setSelected(True)
             self._det_list.addItem(item)
+        self._det_list.setToolTip("Ctrl/Cmd-click or Shift-click to select more than one detector.")
         det_layout.addWidget(self._det_list)
         layout.addWidget(det_group)
 
+        # ── Classifier selection (multi-select, optional) ──────────────────
+        cls_group = QGroupBox("Classifiers (optional — assign call types after detection)")
+        cls_group.setToolTip(
+            "Each selected classifier runs on every selected detector's (post-processed) output, "
+            "producing one exported file per detector × classifier pair. Leave empty to export "
+            "each detector's output unclassified, as before."
+        )
+        cls_layout = QVBoxLayout(cls_group)
+        self._cls_list = QListWidget()
+        self._cls_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        for classifier_cls in AbstractClassifier.all():
+            item = QListWidgetItem(classifier_cls.id)
+            item.setToolTip(classifier_cls.description)
+            self._cls_list.addItem(item)
+        self._cls_list.setToolTip("Ctrl/Cmd-click or Shift-click to select more than one classifier.")
+        cls_layout.addWidget(self._cls_list)
+        layout.addWidget(cls_group)
+
         # ── Post-processing (multi-select) ────────────────────────────────
         post_group = QGroupBox("Post-processing (applied in order: None → Merge → Remove Short)")
+        post_group.setToolTip(
+            "Steps applied to every detector's output before export. "
+            "Thresholds are set in Settings → Post-processing."
+        )
         post_layout = QVBoxLayout(post_group)
         self._post_list = QListWidget()
         self._post_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        _POST_TOOLTIPS = {
+            "None": "Export detections exactly as the detector produced them.",
+            "Merge Close Labels": "Merge detections separated by a small gap "
+                                   "(Settings → Post-processing → Max gap to merge).",
+            "Remove Short Labels": "Discard detections shorter than a minimum duration "
+                                    "(Settings → Post-processing → Min label length).",
+        }
         for i, name in enumerate(_POSTPROCESSING):
             item = QListWidgetItem(name)
+            item.setToolTip(_POST_TOOLTIPS.get(name, ""))
             if i in (1, 2):  # Merge and Remove Short
                 item.setSelected(True)
             self._post_list.addItem(item)
@@ -84,11 +115,17 @@ class DetectionTab(QWidget):
 
         # ── Export folder ─────────────────────────────────────────────────
         export_group = QGroupBox("Export folder")
+        export_group.setToolTip("Where the resulting label file(s) are written.")
         export_row = QHBoxLayout(export_group)
         self._export_edit = QLineEdit()
         self._export_edit.setReadOnly(True)
         self._export_edit.setPlaceholderText("Same folder as WAV file")
+        self._export_edit.setToolTip(
+            "Folder where exported label files are written. Leave blank to use the "
+            "WAV file's own folder."
+        )
         export_btn = QPushButton("Browse…")
+        export_btn.setToolTip("Choose an export folder.")
         export_btn.clicked.connect(self._browse_export)
         export_row.addWidget(self._export_edit)
         export_row.addWidget(export_btn)
@@ -98,6 +135,10 @@ class DetectionTab(QWidget):
 
         # ── Run ───────────────────────────────────────────────────────────
         self._run_btn = QPushButton("Run detectors")
+        self._run_btn.setToolTip(
+            "Run the selected detector(s) — on the loaded file, or on every file in the "
+            "batch folder if Data Input is in batch mode — then export label files."
+        )
         self._run_btn.setObjectName("primaryBtn")
         self._run_btn.setMinimumHeight(36)
         self._run_btn.clicked.connect(self._run)
@@ -131,6 +172,8 @@ class DetectionTab(QWidget):
             QMessageBox.warning(self, "No detector selected", "Select at least one detector.")
             return
 
+        selected_classifiers = [item.text() for item in self._cls_list.selectedItems()]
+
         # Get selected post-processing (in fixed order: None, Merge, Remove Short)
         selected_post = set()
         for item in self._post_list.selectedItems():
@@ -144,11 +187,13 @@ class DetectionTab(QWidget):
         is_batch = self._data_input_tab and self._data_input_tab.batch_mode
 
         if is_batch:
-            self._run_batch_mode(selected_detectors, post_processing)
+            self._run_batch_mode(selected_detectors, selected_classifiers, post_processing)
         else:
-            self._run_single_mode(selected_detectors, post_processing)
+            self._run_single_mode(selected_detectors, selected_classifiers, post_processing)
 
-    def _run_single_mode(self, detectors: list[str], post_processing: list[str]) -> None:
+    def _run_single_mode(
+        self, detectors: list[str], classifiers: list[str], post_processing: list[str],
+    ) -> None:
         """Run detectors on a single loaded WAV file."""
         if self._state.samples is None:
             QMessageBox.warning(self, "No file loaded", "Load a WAV file first.")
@@ -185,6 +230,7 @@ class DetectionTab(QWidget):
                 base_name,
                 export_dir,
                 detectors,
+                classifiers,
                 post_processing,
                 file_count,
                 total_files,
@@ -201,7 +247,9 @@ class DetectionTab(QWidget):
                 self._progress_dialog.close()
                 self._progress_dialog = None
 
-    def _run_batch_mode(self, detectors: list[str], post_processing: list[str]) -> None:
+    def _run_batch_mode(
+        self, detectors: list[str], classifiers: list[str], post_processing: list[str],
+    ) -> None:
         """Run detectors on all WAV files in the batch folder."""
         if not self._data_input_tab:
             QMessageBox.warning(self, "Error", "Data Input tab not available.")
@@ -261,6 +309,7 @@ class DetectionTab(QWidget):
                     base_name,
                     export_dir,
                     detectors,
+                    classifiers,
                     post_processing,
                     file_idx,
                     len(wav_files),
@@ -287,11 +336,13 @@ class DetectionTab(QWidget):
         base_name: str,
         export_dir: str,
         detectors: list[str],
+        classifiers: list[str],
         post_processing: list[str],
         file_idx: int,
         total_files: int,
     ) -> None:
-        """Run all selected detectors on a signal and apply post-processing."""
+        """Run all selected detectors (and optional classifiers) on a signal,
+        applying post-processing to each detector's output before export."""
         total_detectors = len(detectors)
 
         for det_idx, det_name in enumerate(detectors, 1):
@@ -323,26 +374,37 @@ class DetectionTab(QWidget):
                             post = self._state.settings.detection.post
                             labels = remove_short_labels(labels, post.minLabelLength)
 
-                # Export with timestamp
                 export_path = Path(export_dir)
                 export_path.mkdir(parents=True, exist_ok=True)
-
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"{base_name}_{det_name}_{timestamp}_detected.txt"
-                out_file = export_path / filename
-                export_labels_detector(out_file, labels)
+
+                if classifiers:
+                    display_labels = labels
+                    for cls_name in classifiers:
+                        if self._cancel_requested:
+                            return
+                        classifier = self._build_classifier(cls_name)
+                        classified = classifier.classify(labels, samples, fs)
+                        filename = f"{base_name}_{det_name}_{cls_name}_{timestamp}_detected.txt"
+                        out_file = export_path / filename
+                        export_labels_detector(out_file, classified)
+                        display_labels = classified
+                    summary = f"Finished {det_name}: exported {len(classifiers)} classified file(s)."
+                else:
+                    filename = f"{base_name}_{det_name}_{timestamp}_detected.txt"
+                    out_file = export_path / filename
+                    export_labels_detector(out_file, labels)
+                    display_labels = labels
+                    summary = f"Finished {det_name}: {len(labels)} events. Exported to {out_file.name}"
 
                 if self._progress_dialog:
-                    self._progress_dialog.setLabelText(
-                        f"Finished {det_name}: {len(labels)} events. "
-                        f"Exported to {out_file.name}"
-                    )
+                    self._progress_dialog.setLabelText(summary)
                     self._progress_dialog.setValue(int(det_idx / total_detectors * 100))
                     QApplication.processEvents()
 
-                # For single file mode, update state with last detector result
+                # For single file mode, update state with last detector/classifier result
                 if total_files == 1:
-                    self._state.detected_labels = labels
+                    self._state.detected_labels = display_labels
                     self._state.labels_changed.emit()
 
             except Exception as exc:  # noqa: BLE001
@@ -360,12 +422,12 @@ class DetectionTab(QWidget):
         samples, fs = sf.read(path)
         return samples, fs
 
-    def _build_detector(self, det_name: str) -> AbstractDetector:
-        det = self._state.settings.detection
-        if det_name == "PSD":
-            return PSDDetector(det.psd)
-        if det_name == "BSCD":
-            return BSCDDetector(det.bscd)
-        if det_name == "RBD":
-            return RBDDetector(det.rbd)
-        return MLDetector(det.ml)
+    def _build_detector(self, det_id: str) -> AbstractDetector:
+        cls = AbstractDetector.get(det_id)
+        params = self._state.settings.detection.params_for(det_id)
+        return cls(params)
+
+    def _build_classifier(self, cls_id: str) -> AbstractClassifier:
+        cls = AbstractClassifier.get(cls_id)
+        params = self._state.settings.classification.params_for(cls_id)
+        return cls(params)

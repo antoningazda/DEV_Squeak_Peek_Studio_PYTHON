@@ -9,12 +9,69 @@ from __future__ import annotations
 
 import numpy as np
 from numba import njit
+from pydantic import BaseModel, Field
+from scipy.ndimage import uniform_filter1d
 
-from squeak_peek.config import RBDParams
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.labels.model import Label
 
 _EPS = 1e-300
+
+
+class RBDParams(BaseModel):
+    """Parameters for the Relative Bayesian Difference detector."""
+
+    fcutMin: float = Field(
+        40_000, ge=0, le=250_000,
+        description="Lower bound of the frequency band the RBD detector analyses.",
+        json_schema_extra={"unit": "Hz", "group": "freq_band"},
+    )
+    fcutMax: float = Field(
+        120_000, ge=0, le=250_000,
+        description="Upper bound of the frequency band the RBD detector analyses.",
+        json_schema_extra={"unit": "Hz", "group": "freq_band"},
+    )
+    wlen: float = Field(
+        0.04, ge=0.0, le=1.0,
+        description="Length of the sliding window compared on either side of each candidate boundary.",
+        json_schema_extra={"unit": "s", "decimals": 4},
+    )
+    AR_order_left: int = Field(
+        4, ge=0, le=50,
+        description="Order of the autoregressive model fitted to the segment left of a candidate boundary.",
+        json_schema_extra={"caption": "Higher orders capture more complex spectral shape but need more data and computation."},
+    )
+    AR_order_right: int = Field(
+        4, ge=0, le=50,
+        description="Order of the autoregressive model fitted to the segment right of a candidate boundary.",
+        json_schema_extra={"caption": "Higher orders capture more complex spectral shape but need more data and computation."},
+    )
+    Bayesian_Evidence_order: int = Field(
+        4, ge=0, le=50,
+        description="Order of the autoregressive model used when computing the Bayesian evidence ratio.",
+    )
+    dynamicScaling: float = Field(
+        0.3, ge=0.0, le=10.0,
+        description="Scales the adaptive detection threshold relative to the signal's local statistics.",
+        json_schema_extra={"decimals": 4},
+    )
+    smoothingWindowRBD: float = Field(
+        0.02, ge=0.0, le=1.0,
+        description="Smoothing window applied to the RBD detection statistic before thresholding.",
+        json_schema_extra={"unit": "s", "decimals": 4},
+    )
+    smoothingWindowThr: float = Field(
+        0.02, ge=0.0, le=1.0,
+        description="Smoothing window applied to the adaptive threshold itself.",
+        json_schema_extra={"unit": "s", "decimals": 4},
+    )
+    amplitudeThreshold: float = Field(
+        0.02, ge=0.0, le=1.0,
+        description="Minimum normalized signal amplitude required for a candidate event to be kept.",
+        json_schema_extra={"decimals": 4},
+    )
+
+    model_config = {"populate_by_name": True}
 
 
 def _matlab_round(x: float) -> int:
@@ -91,32 +148,64 @@ def _rbd_impl(sig: np.ndarray, okno: int, M1: int, M2: int, ME: int) -> np.ndarr
     FTF0 = CHI_E @ FI_E @ CHI_E
     E5[m - 1] = np.log(np.abs(D - FTF0) + _EPS)
 
+    # Scratch buffers reused across every iteration of the main loop below.
+    # Numba can't stack-allocate arrays whose size is a runtime value (D2/ME
+    # here), so allocating G2/W/etc. fresh inside a 10s-of-millions-of-
+    # iterations loop makes heap allocation (not FLOPs) the bottleneck.
+    # Preallocating once and mutating in place (with explicit index loops in
+    # place of np.outer/@, which would themselves allocate) removes that cost.
+    G2 = np.zeros(D2)
+    G2_E = np.zeros(ME)
+    Z = np.zeros(D2)
+    Z_E = np.zeros(ME)
+    R = np.zeros(D2)
+    Q = np.zeros(D2)
+    W = np.zeros(D2)
+    W_E = np.zeros(ME)
+    tmp_D2 = np.zeros(D2)
+    tmp_ME = np.zeros(ME)
+
     # ---- main loop: mm = m+1 .. Ntot-m (MATLAB 1-based, inclusive) ----
     for mm in range(m + 1, Ntot - m + 1):
         # --- pridani novych dat (add newest sample, position mm+m) ---
         d2 = sig[mm + m - 1]  # sig(mm+m)
 
-        G2 = np.zeros(D2)
         for k in range(M2):
             G2[M1 + k] = sig[mm + m - 2 - k]
         D += d2 * d2
-        CHI = CHI + d2 * G2
-        W = FI @ G2
-        LAMBDA = 1.0 + G2 @ W
-        FI = FI - np.outer(W, W) / LAMBDA
+        for i in range(D2):
+            CHI[i] += d2 * G2[i]
+        for i in range(D2):
+            acc = 0.0
+            for j in range(D2):
+                acc += FI[i, j] * G2[j]
+            W[i] = acc
+        LAMBDA = 1.0
+        for i in range(D2):
+            LAMBDA += G2[i] * W[i]
+        for i in range(D2):
+            for j in range(D2):
+                FI[i, j] -= W[i] * W[j] / LAMBDA
 
-        G2_E = np.zeros(ME)
         for k in range(ME):
             G2_E[k] = sig[mm + m - 2 - k]
-        CHI_E = CHI_E + d2 * G2_E
-        W_E = FI_E @ G2_E
-        LAMBDA_E = 1.0 + G2_E @ W_E
-        FI_E = FI_E - np.outer(W_E, W_E) / LAMBDA_E
+        for i in range(ME):
+            CHI_E[i] += d2 * G2_E[i]
+        for i in range(ME):
+            acc = 0.0
+            for j in range(ME):
+                acc += FI_E[i, j] * G2_E[j]
+            W_E[i] = acc
+        LAMBDA_E = 1.0
+        for i in range(ME):
+            LAMBDA_E += G2_E[i] * W_E[i]
+        for i in range(ME):
+            for j in range(ME):
+                FI_E[i, j] -= W_E[i] * W_E[j] / LAMBDA_E
 
         # --- vlozeni nul (drop oldest sample, position mm-m) ---
         old = sig[mm - m - 1]  # sig(mm-m)
         D -= old * old
-        Z = np.zeros(D2)
         if mm - m > M1:
             for k in range(M1):
                 Z[k] = sig[mm - m - 2 - k]
@@ -124,12 +213,20 @@ def _rbd_impl(sig: np.ndarray, okno: int, M1: int, M2: int, ME: int) -> np.ndarr
             avail = mm - 1 - m
             for k in range(avail):
                 Z[k] = sig[mm - m - 2 - k]
-        CHI = CHI - old * Z
-        W = FI @ Z
-        LAMBDA = 1.0 - Z @ W
-        FI = FI + np.outer(W, W) / LAMBDA
+        for i in range(D2):
+            CHI[i] -= old * Z[i]
+        for i in range(D2):
+            acc = 0.0
+            for j in range(D2):
+                acc += FI[i, j] * Z[j]
+            W[i] = acc
+        LAMBDA = 1.0
+        for i in range(D2):
+            LAMBDA -= Z[i] * W[i]
+        for i in range(D2):
+            for j in range(D2):
+                FI[i, j] += W[i] * W[j] / LAMBDA
 
-        Z_E = np.zeros(ME)
         if mm - m > ME:
             for k in range(ME):
                 Z_E[k] = sig[mm - m - 2 - k]
@@ -137,33 +234,72 @@ def _rbd_impl(sig: np.ndarray, okno: int, M1: int, M2: int, ME: int) -> np.ndarr
             avail_e = mm - 1 - m
             for k in range(avail_e):
                 Z_E[k] = sig[mm - m - 2 - k]
-        CHI_E = CHI_E - old * Z_E
-        W_E = FI_E @ Z_E
-        LAMBDA_E = 1.0 - Z_E @ W_E
-        FI_E = FI_E + np.outer(W_E, W_E) / LAMBDA_E
+        for i in range(ME):
+            CHI_E[i] -= old * Z_E[i]
+        for i in range(ME):
+            acc = 0.0
+            for j in range(ME):
+                acc += FI_E[i, j] * Z_E[j]
+            W_E[i] = acc
+        LAMBDA_E = 1.0
+        for i in range(ME):
+            LAMBDA_E -= Z_E[i] * W_E[i]
+        for i in range(ME):
+            for j in range(ME):
+                FI_E[i, j] += W_E[i] * W_E[j] / LAMBDA_E
 
-        FTF = CHI_E @ FI_E @ CHI_E
+        for i in range(ME):
+            acc = 0.0
+            for j in range(ME):
+                acc += FI_E[i, j] * CHI_E[j]
+            tmp_ME[i] = acc
+        FTF = 0.0
+        for i in range(ME):
+            FTF += CHI_E[i] * tmp_ME[i]
         E5[mm - 1] = np.log(np.abs(D - FTF) + _EPS)
 
         # --- posunuti pozice m+1 (shift the left/right split boundary) ---
-        R = np.zeros(D2)
         for k in range(M2):
             R[M1 + k] = sig[mm - 2 - k]
         cur = sig[mm - 1]  # sig(mm)
-        CHI = CHI - cur * R
-        W = FI @ R
-        LAMBDA = 1.0 - R @ W
-        FI = FI + np.outer(W, W) / LAMBDA
+        for i in range(D2):
+            CHI[i] -= cur * R[i]
+        for i in range(D2):
+            acc = 0.0
+            for j in range(D2):
+                acc += FI[i, j] * R[j]
+            W[i] = acc
+        LAMBDA = 1.0
+        for i in range(D2):
+            LAMBDA -= R[i] * W[i]
+        for i in range(D2):
+            for j in range(D2):
+                FI[i, j] += W[i] * W[j] / LAMBDA
 
-        Q = np.zeros(D2)
         for k in range(M1):
             Q[k] = sig[mm - 2 - k]
-        CHI = CHI + cur * Q
-        W = FI @ Q
-        LAMBDA = 1.0 + Q @ W
-        FI = FI - np.outer(W, W) / LAMBDA
+        for i in range(D2):
+            CHI[i] += cur * Q[i]
+        for i in range(D2):
+            acc = 0.0
+            for j in range(D2):
+                acc += FI[i, j] * Q[j]
+            W[i] = acc
+        LAMBDA = 1.0
+        for i in range(D2):
+            LAMBDA += Q[i] * W[i]
+        for i in range(D2):
+            for j in range(D2):
+                FI[i, j] -= W[i] * W[j] / LAMBDA
 
-        cit_val = D - CHI @ FI @ CHI
+        for i in range(D2):
+            acc = 0.0
+            for j in range(D2):
+                acc += FI[i, j] * CHI[j]
+            tmp_D2[i] = acc
+        cit_val = D
+        for i in range(D2):
+            cit_val -= CHI[i] * tmp_D2[i]
         cit[mm - 1] = np.log(np.abs(cit_val) + _EPS)
 
     return cit, E5
@@ -248,8 +384,13 @@ class RBDDetector(AbstractDetector):
     normalized signal.
     """
 
-    def __init__(self, params: RBDParams):
-        self.params = params
+    id = "RBD"
+    display_name = "RBD"
+    description = (
+        "Relative Bayesian Difference — compares autoregressive models on either "
+        "side of a candidate boundary. More precise boundaries, more compute per call."
+    )
+    Params = RBDParams
 
     def detect(self, signal: np.ndarray, fs: int) -> list[Label]:
         signal = np.asarray(signal, dtype=np.float64).ravel()
@@ -278,16 +419,16 @@ class RBDDetector(AbstractDetector):
             return []
         rbd_out = rbd_out / rbd_max
 
-        # Smoothing (MATLAB RBDDetector.m line 73: movmean)
+        # Smoothing (MATLAB RBDDetector.m line 73: movmean). Uses scipy's O(N)
+        # sliding-window mean rather than np.convolve, whose O(N * window)
+        # cost is impractical at this scale (tens of millions of samples).
         smooth_window_rbd = max(1, round(self.params.smoothingWindowRBD * fs))
-        smooth_rbd = np.convolve(
-            rbd_out, np.ones(smooth_window_rbd) / smooth_window_rbd, mode="same"
-        )
+        smooth_rbd = uniform_filter1d(rbd_out, size=smooth_window_rbd, mode="nearest")
 
         # Dynamic threshold (MATLAB RBDDetector.m line 74)
         smooth_window_thr = max(1, round(self.params.smoothingWindowThr * fs))
         dynamic_threshold = (
-            np.convolve(smooth_rbd, np.ones(smooth_window_thr) / smooth_window_thr, mode="same")
+            uniform_filter1d(smooth_rbd, size=smooth_window_thr, mode="nearest")
             * self.params.dynamicScaling
         )
 
@@ -314,7 +455,3 @@ class RBDDetector(AbstractDetector):
             )
 
         return labels
-
-    @property
-    def name(self) -> str:
-        return "RBD"

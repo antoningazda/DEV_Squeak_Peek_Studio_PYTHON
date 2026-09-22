@@ -12,14 +12,10 @@ from __future__ import annotations
 
 import pytest
 
-from squeak_peek.config import (
-    AppSettings,
-    BSCDParams,
-    LabelEditSettings,
-    PostProcessParams,
-    PSDParams,
-    RBDParams,
-)
+from squeak_peek.config import AppSettings, LabelEditSettings, PostProcessParams
+from squeak_peek.detectors.bscd import BSCDParams
+from squeak_peek.detectors.psd import PSDParams
+from squeak_peek.detectors.rbd import RBDParams
 
 # ── Default construction ────────────────────────────────────────────────────
 
@@ -60,35 +56,35 @@ class TestFromJson:
         assert isinstance(settings, AppSettings)
 
     def test_psd_fcut_min(self, settings):
-        assert settings.detection.psd.fcutMin == 40_000
+        assert settings.detection.params_for("PSD").fcutMin == 40_000
 
     def test_psd_fcut_max(self, settings):
-        assert settings.detection.psd.fcutMax == 120_000
+        assert settings.detection.params_for("PSD").fcutMax == 120_000
 
     def test_psd_segment_length(self, settings):
-        assert settings.detection.psd.segmentLength == 8192
+        assert settings.detection.params_for("PSD").segmentLength == 8192
 
     def test_psd_overlap_factor(self, settings):
-        assert settings.detection.psd.overlapFactor == pytest.approx(0.59)
+        assert settings.detection.params_for("PSD").overlapFactor == pytest.approx(0.59)
 
     def test_psd_k_and_w(self, settings):
-        assert settings.detection.psd.k == pytest.approx(0.023)
-        assert settings.detection.psd.w == pytest.approx(0.994)
+        assert settings.detection.params_for("PSD").k == pytest.approx(0.023)
+        assert settings.detection.params_for("PSD").w == pytest.approx(0.994)
 
     def test_psd_min_effective_power(self, settings):
-        assert settings.detection.psd.minEffectivePower == pytest.approx(8.5e-5)
+        assert settings.detection.params_for("PSD").minEffectivePower == pytest.approx(8.5e-5)
 
     def test_bscd_wlen(self, settings):
-        assert settings.detection.bscd.wlen == pytest.approx(0.01)
+        assert settings.detection.params_for("BSCD").wlen == pytest.approx(0.01)
 
     def test_bscd_ma_window(self, settings):
-        assert settings.detection.bscd.maWindow == 5_000
+        assert settings.detection.params_for("BSCD").maWindow == 5_000
 
     def test_rbd_wlen(self, settings):
-        assert settings.detection.rbd.wlen == pytest.approx(0.04)
+        assert settings.detection.params_for("RBD").wlen == pytest.approx(0.04)
 
     def test_rbd_dynamic_scaling(self, settings):
-        assert settings.detection.rbd.dynamicScaling == pytest.approx(0.3)
+        assert settings.detection.params_for("RBD").dynamicScaling == pytest.approx(0.3)
 
     def test_post_max_gap(self, settings):
         assert settings.detection.post.maxGapToMerge == pytest.approx(0.005)
@@ -118,7 +114,7 @@ class TestFromJson:
         assert settings.data_input.batch_mode is False
 
     def test_ml_min_event_duration(self, settings):
-        assert settings.detection.ml.minEventDuration == pytest.approx(0.003)
+        assert settings.detection.params_for("ML").minEventDuration == pytest.approx(0.003)
 
 
 # ── Round-trip serialisation ────────────────────────────────────────────────
@@ -130,8 +126,8 @@ class TestRoundTrip:
         reloaded = AppSettings.from_json(out)
 
         # Spot-check a handful of values
-        assert reloaded.detection.psd.fcutMin == settings.detection.psd.fcutMin
-        assert reloaded.detection.rbd.wlen == pytest.approx(settings.detection.rbd.wlen)
+        assert reloaded.detection.params_for("PSD").fcutMin == settings.detection.params_for("PSD").fcutMin
+        assert reloaded.detection.params_for("RBD").wlen == pytest.approx(settings.detection.params_for("RBD").wlen)
         assert reloaded.visualization.colormap == settings.visualization.colormap
 
     def test_defaults_round_trip(self, tmp_path):
@@ -139,4 +135,4 @@ class TestRoundTrip:
         out = tmp_path / "defaults.json"
         s.save_json(out)
         s2 = AppSettings.from_json(out)
-        assert s2.detection.psd.fcutMin == s.detection.psd.fcutMin
+        assert s2.detection.params_for("PSD").fcutMin == s.detection.params_for("PSD").fcutMin

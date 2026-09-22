@@ -8,8 +8,12 @@ Usage
     settings = AppSettings.from_json("settings/default.json")
 
     # Access any parameter with full IDE type support:
-    print(settings.detection.psd.fcutMin)       # 40000
-    print(settings.visualization.colormap)       # "parula"
+    print(settings.detection.params_for("PSD").fcutMin)   # 40000
+    print(settings.visualization.colormap)                 # "parula"
+
+Detector and classifier parameters are stored generically, keyed by each
+plugin's `id` (see squeak_peek.detectors / squeak_peek.classifiers) —
+adding a new detector or classifier never requires touching this module.
 
 Note: the app's visual theme (light/dark/system) is handled entirely by
 squeak_peek.gui._theme's design-token system, not by this module — MATLAB's
@@ -176,59 +180,17 @@ class VideoSettings(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Detector-specific parameter blocks
+# Detector / classifier parameter storage
 # ═══════════════════════════════════════════════════════════════════════════
-
-class PSDParams(BaseModel):
-    """Parameters for the Power Spectral Density detector."""
-
-    fcutMin: float = 40_000          # Hz
-    fcutMax: float = 120_000         # Hz
-    ROIstart: float = 60             # seconds — start of Region of Interest
-    ROIlength: float = 10            # seconds — length of ROI
-    runWholeSignal: bool = True      # ignore ROI and process full signal
-    segmentLength: int = 8192        # STFT window length (samples)
-    overlapFactor: float = 0.59      # STFT overlap fraction
-    maWindow: int = 3                # moving-average window (frames)
-    noiseWindow: int = 240           # noise-floor estimation window (frames)
-    localWindow: int = 194           # local smoothing window (frames)
-    k: float = 0.023                 # threshold scaling factor
-    w: float = 0.994                 # noise-floor weighting factor
-    minEffectivePower: float = 8.5e-5  # minimum power for event acceptance
-
-    model_config = {"populate_by_name": True}
-
-
-class BSCDParams(BaseModel):
-    """Parameters for the Bayesian Sequential Change Detection detector."""
-
-    fcutMin: float = 40_000
-    fcutMax: float = 120_000
-    wlen: float = 0.01               # analysis window length (s)
-    maWindow: int = 5_000            # moving-average window (samples)
-    noiseWindow: int = 256           # noise estimation window (samples)
-    localWindow: int = 256           # local smoothing window (samples)
-    k: float = 0.023
-    w: float = 0.994
-
-    model_config = {"populate_by_name": True}
-
-
-class RBDParams(BaseModel):
-    """Parameters for the Relative Bayesian Difference detector."""
-
-    fcutMin: float = 40_000
-    fcutMax: float = 120_000
-    wlen: float = 0.04               # analysis window length (s)
-    AR_order_left: int = 4           # AR model order for the left segment
-    AR_order_right: int = 4          # AR model order for the right segment
-    Bayesian_Evidence_order: int = 4
-    dynamicScaling: float = 0.3      # dynamic threshold scaling
-    smoothingWindowRBD: float = 0.02 # RBD output smoothing window (s)
-    smoothingWindowThr: float = 0.02 # threshold smoothing window (s)
-    amplitudeThreshold: float = 0.02 # minimum amplitude for detection
-
-    model_config = {"populate_by_name": True}
+#
+# Each detector/classifier plugin owns its own Params pydantic model,
+# defined alongside its class (see e.g. squeak_peek.detectors.psd.PSDParams,
+# squeak_peek.classifiers.duration.DurationClassifierParams). DetectionSettings
+# and ClassificationSettings below store the *raw* per-plugin dicts, keyed by
+# plugin id, and only validate them against a Params model on demand via
+# params_for() — so adding a new detector or classifier never requires
+# touching this module or default.json (missing entries just fall back to
+# that plugin's own defaults).
 
 
 class PostProcessParams(BaseModel):
@@ -240,27 +202,49 @@ class PostProcessParams(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class MLParams(BaseModel):
-    """Runtime parameters for the ML (Random Forest) detector."""
+class _PluginParamStore(BaseModel):
+    """Shared behavior for DetectionSettings/ClassificationSettings: generic,
+    per-plugin-id raw parameter dicts, captured via pydantic's `extra`
+    mechanism so any key round-trips through JSON without a schema change."""
 
-    modelPath: str = ""              # path to a saved .joblib model file
-    minEventDuration: float = 0.003  # minimum event duration after merging (s)
-    sensitivity: float = 0.5         # frame-probability threshold (0-1); higher = more selective
+    model_config = {"populate_by_name": True, "extra": "allow"}
 
-    model_config = {"populate_by_name": True}
+    def params_for(self, plugin_id: str) -> BaseModel:
+        """Return the validated Params instance for one registered plugin.
+
+        Falls back to that plugin's own defaults if no raw data is stored
+        for it yet (e.g. it was added after this settings file was saved).
+        """
+        params_cls = self._plugin_registry().get(plugin_id).Params
+        raw = self.model_extra.get(plugin_id, {})
+        return params_cls.model_validate(raw)
+
+    def set_params(self, plugin_id: str, params: BaseModel) -> None:
+        """Store a plugin's Params instance (e.g. after a Settings-tab Apply)."""
+        self.model_extra[plugin_id] = params.model_dump()
+
+    def _plugin_registry(self):
+        raise NotImplementedError
 
 
-class DetectionSettings(BaseModel):
+class DetectionSettings(_PluginParamStore):
     """Mirrors the 'Detection' section of default.json."""
 
     export_path: str = Field(alias="ExportPath", default="")
-    psd: PSDParams   = Field(alias="PSD",  default_factory=PSDParams)
-    bscd: BSCDParams = Field(alias="BSCD", default_factory=BSCDParams)
-    rbd: RBDParams   = Field(alias="RBD",  default_factory=RBDParams)
     post: PostProcessParams = Field(alias="POST", default_factory=PostProcessParams)
-    ml: MLParams     = Field(alias="ML",   default_factory=MLParams)
 
-    model_config = {"populate_by_name": True}
+    def _plugin_registry(self):
+        from squeak_peek.detectors.base import AbstractDetector
+        return AbstractDetector
+
+
+class ClassificationSettings(_PluginParamStore):
+    """Mirrors the (optional) 'Classification' section of default.json —
+    generic per-classifier parameter storage, keyed by classifier plugin id."""
+
+    def _plugin_registry(self):
+        from squeak_peek.classifiers.base import AbstractClassifier
+        return AbstractClassifier
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -285,6 +269,9 @@ class AppSettings(BaseModel):
     )
     detection: DetectionSettings = Field(
         alias="Detection", default_factory=DetectionSettings
+    )
+    classification: ClassificationSettings = Field(
+        alias="Classification", default_factory=ClassificationSettings
     )
     video: VideoSettings = Field(
         alias="Video", default_factory=VideoSettings

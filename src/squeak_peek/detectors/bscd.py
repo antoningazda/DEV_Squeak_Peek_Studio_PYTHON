@@ -9,11 +9,59 @@ from __future__ import annotations
 
 import numpy as np
 from numba import njit
+from pydantic import BaseModel, Field
+from scipy.ndimage import minimum_filter1d, uniform_filter1d
 
 from squeak_peek.audio.filters import bandpass_filter_filtfilt
-from squeak_peek.config import BSCDParams
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.labels.model import Label
+
+
+class BSCDParams(BaseModel):
+    """Parameters for the Bayesian Sequential Change Detection detector."""
+
+    fcutMin: float = Field(
+        40_000, ge=0, le=250_000,
+        description="Lower bound of the frequency band the BSCD detector analyses.",
+        json_schema_extra={"unit": "Hz", "group": "freq_band"},
+    )
+    fcutMax: float = Field(
+        120_000, ge=0, le=250_000,
+        description="Upper bound of the frequency band the BSCD detector analyses.",
+        json_schema_extra={"unit": "Hz", "group": "freq_band"},
+    )
+    wlen: float = Field(
+        0.01, ge=0.0, le=1.0,
+        description="Length of the sliding analysis window used to detect abrupt changes in signal statistics.",
+        json_schema_extra={"unit": "s", "decimals": 4},
+    )
+    maWindow: int = Field(
+        5_000, ge=1, le=2_000_000,
+        description="Number of frames averaged to smooth the change-detection statistic.",
+    )
+    noiseWindow: int = Field(
+        256, ge=1, le=2_000_000,
+        description="Number of frames used to estimate the background noise level.",
+    )
+    localWindow: int = Field(
+        256, ge=1, le=2_000_000,
+        description="Number of frames used to estimate the local (short-term) signal level.",
+    )
+    k: float = Field(
+        0.023, ge=0.0, le=10.0,
+        description="Scales the local-statistics term of the adaptive threshold.",
+        json_schema_extra={
+            "decimals": 4,
+            "caption": "Higher k -> stricter threshold -> fewer, more confident detections.",
+        },
+    )
+    w: float = Field(
+        0.994, ge=0.0, le=20.0,
+        description="Weight given to the local SNR term when computing the adaptive threshold.",
+        json_schema_extra={"decimals": 4},
+    )
+
+    model_config = {"populate_by_name": True}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Numba-compiled core: inline 2x2 matrix operations for performance
@@ -322,25 +370,13 @@ class BSCDDetector(AbstractDetector):
     post-processing (smoothing, thresholding, event extraction).
     """
 
-    def __init__(self, params: BSCDParams):
-        """
-        Initialize the BSCD detector.
-
-        Parameters
-        ----------
-        params : BSCDParams
-            Configuration object with fields:
-                - fcutMin, fcutMax: bandpass filter cutoff frequencies (Hz)
-                - wlen: analysis window length (seconds)
-                - maWindow: moving-average smoothing window (samples)
-                - noiseWindow, localWindow, k, w: (reserved for future use)
-        """
-        self.params = params
-
-    @property
-    def name(self) -> str:
-        """Detector name."""
-        return "BSCD"
+    id = "BSCD"
+    display_name = "BSCD"
+    description = (
+        "Bayesian Sequential Change Detection — flags points where the signal's "
+        "statistics shift abruptly. Good for call onsets/offsets in noisier audio."
+    )
+    Params = BSCDParams
 
     def detect(self, signal: np.ndarray, fs: int) -> list[Label]:
         """
@@ -387,9 +423,25 @@ class BSCDDetector(AbstractDetector):
         # Moving average smoothing
         bscd_smoothed = self._moving_average(bscd_out, self.params.maWindow)
 
-        # ─── Thresholding and event extraction ─────────────────────────────
-        threshold = np.mean(bscd_smoothed)
-        binary = bscd_smoothed > threshold
+        # ─── Adaptive thresholding and event extraction ─────────────────────
+        # A single global-mean threshold (the original MATLAB behavior) puts
+        # the cut well inside the bulk of the (left-skewed) evidence trace,
+        # flagging the majority of the recording as "on". Use the same
+        # local-noise-floor + SNR-weighted scheme PSDDetector uses instead,
+        # driven by the (previously unused) noiseWindow/localWindow/k/w params.
+        noise_window = max(1, int(self.params.noiseWindow))
+        local_window = max(1, int(self.params.localWindow))
+
+        noise_floor = minimum_filter1d(bscd_smoothed, size=noise_window, mode="nearest")
+        effective = np.maximum(bscd_smoothed - noise_floor, 0.0)
+        local_snr = np.minimum(effective / (noise_floor + np.finfo(float).eps), 10.0)
+
+        local_mean = self._moving_average(effective, local_window)
+        local_mean_sq = self._moving_average(effective**2, local_window)
+        local_std = np.sqrt(np.maximum(local_mean_sq - local_mean**2, 0.0))
+
+        threshold = (local_mean + self.params.k * local_std) / (1.0 + self.params.w * local_snr)
+        binary = effective > threshold
 
         # Find transitions (0->1 and 1->0)
         binary_padded = np.concatenate(([0], binary.astype(int), [0]))
@@ -401,7 +453,7 @@ class BSCDDetector(AbstractDetector):
         time_axis = np.arange(len(signal)) / fs
         labels = []
         for start_idx, end_idx in zip(start_indices, end_indices):
-            if start_idx < len(time_axis) and end_idx < len(time_axis):
+            if start_idx < end_idx < len(time_axis):
                 label = Label(
                     start_time=time_axis[start_idx],
                     end_time=time_axis[end_idx],
@@ -415,10 +467,15 @@ class BSCDDetector(AbstractDetector):
 
     @staticmethod
     def _moving_average(signal: np.ndarray, window: int) -> np.ndarray:
-        """Apply moving average smoothing."""
+        """Apply centered moving average smoothing.
+
+        Uses scipy's O(N) sliding-window mean (uniform_filter1d) rather than
+        np.convolve, whose O(N * window) cost is impractical here: BSCD's
+        traces are one sample per audio sample (tens of millions of points),
+        so an O(N * window) convolution with a multi-thousand-sample kernel
+        (maWindow) would take minutes per file.
+        """
         if window <= 1:
             return signal.copy()
 
-        # Use centered moving average for minimal delay
-        result = np.convolve(signal, np.ones(window) / window, mode="same")
-        return result
+        return uniform_filter1d(signal, size=int(window), mode="nearest")

@@ -13,39 +13,26 @@ from pathlib import Path
 
 import click
 
+import squeak_peek.detectors  # noqa: F401  (registers built-in detectors)
 from squeak_peek.audio.io import load_wav
 from squeak_peek.config import AppSettings
 from squeak_peek.detectors.base import AbstractDetector
-from squeak_peek.detectors.bscd import BSCDDetector
-from squeak_peek.detectors.ml import MLDetector
-from squeak_peek.detectors.psd import PSDDetector
-from squeak_peek.detectors.rbd import RBDDetector
 from squeak_peek.labels.io import export_labels_detector, import_labels
 from squeak_peek.labels.metrics import compare_labels
 from squeak_peek.labels.model import Label
 from squeak_peek.labels.postprocess import merge_close_labels, remove_short_labels
 
-_DETECTOR_CHOICES = ["psd", "bscd", "rbd", "ml"]
+_DETECTOR_CHOICES = sorted(cls.id.lower() for cls in AbstractDetector.all())
 
 
 def _build_detector(name: str, settings: AppSettings) -> AbstractDetector:
     """Instantiate a detector by name from the loaded settings."""
-    det = settings.detection
-    if name == "psd":
-        return PSDDetector(det.psd)
-    if name == "bscd":
-        return BSCDDetector(det.bscd)
-    if name == "rbd":
-        return RBDDetector(det.rbd)
-    if name == "ml":
-        if not det.ml.modelPath:
-            raise click.ClickException(
-                "The 'ml' detector needs a trained model. Train one with "
-                "squeak_peek.ml.train.train_model() and set Detection.ML.modelPath "
-                "in your settings JSON, or pass --settings pointing at one that does."
-            )
-        return MLDetector(det.ml)
-    raise click.ClickException(f"Unknown detector: {name!r}")
+    det_id = name.upper()
+    try:
+        cls = AbstractDetector.get(det_id)
+    except KeyError as exc:
+        raise click.ClickException(str(exc)) from exc
+    return cls(settings.detection.params_for(det_id))
 
 
 def _postprocess(labels: list[Label], settings: AppSettings) -> list[Label]:
@@ -59,7 +46,11 @@ def _postprocess(labels: list[Label], settings: AppSettings) -> list[Label]:
 def _run_detection(wav_path: Path, detector_name: str, settings: AppSettings) -> list[Label]:
     signal, fs = load_wav(wav_path)
     detector = _build_detector(detector_name, settings)
-    labels = detector.detect(signal, fs)
+    try:
+        labels = detector.detect(signal, fs)
+    except ValueError as exc:
+        # e.g. MLDetector when its Params.modelPath isn't configured.
+        raise click.ClickException(str(exc)) from exc
     return _postprocess(labels, settings)
 
 

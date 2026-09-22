@@ -13,8 +13,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from squeak_peek.config import BSCDParams
-from squeak_peek.detectors.bscd import BSCDDetector, bscd
+from squeak_peek.detectors.bscd import BSCDDetector, BSCDParams, bscd
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Utilities: plain-numpy reference implementation for correctness validation
