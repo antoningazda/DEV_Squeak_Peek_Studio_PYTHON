@@ -97,7 +97,7 @@ class VisualizationSettings(BaseModel):
     show_reference_labels: bool = Field(alias="ShowReferenceLabels", default=True)
     show_labels: bool = Field(alias="ShowLabels", default=True)
 
-    reference_label_color: str = Field(alias="ReferenceLabelColor", default="white")
+    reference_label_color: str = Field(alias="ReferenceLabelColor", default="magenta")
     label_color: str = Field(alias="LabelColor", default="cyan")
 
     manual_label_length: float = Field(
