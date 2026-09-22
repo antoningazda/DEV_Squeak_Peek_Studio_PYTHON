@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pyqtgraph as pg
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QKeyEvent, QKeySequence
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QStyleFactory, QTabWidget
 
@@ -210,6 +211,14 @@ class MainWindow(QMainWindow):
         self._tabs = QTabWidget()
         self._tabs.setObjectName("mainTabs")
         self._tabs.setDocumentMode(True)
+        # QTabBar consumes Left/Right arrow keys itself (to switch tabs) as
+        # long as it holds keyboard focus — which it does right after you
+        # click a tab header. That silently swallowed the Left/Right
+        # "previous/next segment or label" shortcut the instant you switched
+        # into a tab and tried to use it. Denying the tab bar focus lets
+        # those keys reach MainWindow.keyPressEvent instead, without
+        # affecting mouse clicks on the tabs themselves.
+        self._tabs.tabBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._tabs.addTab(self._data_tab,           "Data Input")
         self._tabs.addTab(self._visualization_tab,  "Visualization")
         self._tabs.addTab(self._detection_tab,      "Detection")

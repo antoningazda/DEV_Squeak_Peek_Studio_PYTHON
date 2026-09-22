@@ -306,8 +306,8 @@ class SpectrogramWidget(QWidget):
     def refresh_theme(self) -> None:
         """(Re-)apply theme-dependent colors. Existing label overlays keep
         their old pens until the next display() call redraws them."""
-        self._pen_det = pg.mkPen(theme.DETECTED_COLOR, width=_LABEL_WIDTH)
-        self._pen_ref = pg.mkPen(theme.REFERENCE_COLOR, width=_LABEL_WIDTH)
+        self._pen_det = pg.mkPen(theme.DETECTED_COLOR, width=_LABEL_WIDTH, style=Qt.PenStyle.DashLine)
+        self._pen_ref = pg.mkPen(theme.REFERENCE_COLOR, width=_LABEL_WIDTH, style=Qt.PenStyle.DashLine)
         self._col_det = pg.mkColor(theme.DETECTED_COLOR).getRgb()
         self._col_ref = pg.mkColor(theme.REFERENCE_COLOR).getRgb()
 
@@ -356,13 +356,13 @@ class SpectrogramWidget(QWidget):
         if detected_color_name is not None:
             rgba = _get_color_for_name(detected_color_name)
             if rgba:
-                pen_det = pg.mkPen(rgba, width=_LABEL_WIDTH)
+                pen_det = pg.mkPen(rgba, width=_LABEL_WIDTH, style=Qt.PenStyle.DashLine)
                 col_det = (int(rgba[0]*255), int(rgba[1]*255), int(rgba[2]*255), int(rgba[3]*255))
 
         if reference_color_name is not None:
             rgba = _get_color_for_name(reference_color_name)
             if rgba:
-                pen_ref = pg.mkPen(rgba, width=_LABEL_WIDTH)
+                pen_ref = pg.mkPen(rgba, width=_LABEL_WIDTH, style=Qt.PenStyle.DashLine)
                 col_ref = (int(rgba[0]*255), int(rgba[1]*255), int(rgba[2]*255), int(rgba[3]*255))
 
         i0 = max(0, int(t_start * fs))
@@ -534,26 +534,26 @@ class SpectrogramWidget(QWidget):
                 self._label_items.append((self._spec_plot, box))
                 top_y = f_hi
             else:
-                # Vertical lines at start and end on spectrogram
+                # Vertical dashed lines at start and end on spectrogram —
+                # no horizontal tie-line at the top; just the two lines.
                 for t in (lbl.start_time, lbl.end_time):
                     line = pg.InfiniteLine(pos=t, angle=90, pen=pen, movable=False)
                     self._spec_plot.addItem(line)
                     self._label_items.append((self._spec_plot, line))
-
-                # Horizontal tick at the top connecting start → end
-                top_line = pg.PlotDataItem(
-                    [lbl.start_time, lbl.end_time],
-                    [fmax_khz * 0.995, fmax_khz * 0.995],
-                    pen=pen,
-                )
-                self._spec_plot.addItem(top_line)
-                self._label_items.append((self._spec_plot, top_line))
                 top_y = text_y
 
-            # Text label
+            # Text label: a small opaque badge (dark fill, colored border/
+            # text matching the line color) rather than bare text, so it
+            # reads clearly against any part of the spectrogram.
             label_text = lbl.label if lbl.label else ""
             if label_text:
-                txt = pg.TextItem(text=label_text, color=color, anchor=(0.0, 1.0))
+                txt = pg.TextItem(
+                    text=label_text,
+                    color=color,
+                    fill=pg.mkBrush(0, 0, 0, 220),
+                    border=pg.mkPen(color, width=1),
+                    anchor=(0.0, 1.0),
+                )
                 txt.setPos(lbl.start_time, top_y)
                 self._spec_plot.addItem(txt)
                 self._label_items.append((self._spec_plot, txt))
