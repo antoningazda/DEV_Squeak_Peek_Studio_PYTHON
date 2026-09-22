@@ -147,6 +147,160 @@ def test_round_trip_with_frequencies(
         Path(tmp_path).unlink()
 
 
+def test_round_trip_with_states_accepted_accepted() -> None:
+    """Test round-trip with Accepted/Accepted states."""
+    labels = [
+        Label(
+            start_time=0.0,
+            end_time=0.1,
+            label="d",
+            detection_state="Accepted",
+            classification_state="Accepted",
+        )
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        tmp_path = f.name
+
+    try:
+        export_labels(tmp_path, labels)
+        imported = import_labels(tmp_path)
+
+        assert len(imported) == 1
+        assert imported[0].label == "d"
+        assert imported[0].detection_state == "Accepted"
+        assert imported[0].classification_state == "Accepted"
+    finally:
+        Path(tmp_path).unlink()
+
+
+def test_round_trip_with_states_rejected_rejected() -> None:
+    """Test round-trip with Rejected/Rejected states."""
+    labels = [
+        Label(
+            start_time=0.0,
+            end_time=0.1,
+            label="5",
+            detection_state="Rejected",
+            classification_state="Rejected",
+        )
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        tmp_path = f.name
+
+    try:
+        export_labels(tmp_path, labels)
+        imported = import_labels(tmp_path)
+
+        assert len(imported) == 1
+        assert imported[0].label == "5"
+        assert imported[0].detection_state == "Rejected"
+        assert imported[0].classification_state == "Rejected"
+    finally:
+        Path(tmp_path).unlink()
+
+
+def test_round_trip_with_states_none_none() -> None:
+    """Test round-trip with None/None states (default)."""
+    labels = [
+        Label(
+            start_time=0.0,
+            end_time=0.1,
+            label="sk",
+            detection_state="None",
+            classification_state="None",
+        )
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        tmp_path = f.name
+
+    try:
+        export_labels(tmp_path, labels)
+        imported = import_labels(tmp_path)
+
+        assert len(imported) == 1
+        assert imported[0].label == "sk"
+        assert imported[0].detection_state == "None"
+        assert imported[0].classification_state == "None"
+    finally:
+        Path(tmp_path).unlink()
+
+
+def test_round_trip_with_states_mixed() -> None:
+    """Test round-trip with mixed states (Accepted/Rejected)."""
+    labels = [
+        Label(
+            start_time=0.0,
+            end_time=0.1,
+            label="d",
+            detection_state="Accepted",
+            classification_state="Rejected",
+        )
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        tmp_path = f.name
+
+    try:
+        export_labels(tmp_path, labels)
+        imported = import_labels(tmp_path)
+
+        assert len(imported) == 1
+        assert imported[0].label == "d"
+        assert imported[0].detection_state == "Accepted"
+        assert imported[0].classification_state == "Rejected"
+    finally:
+        Path(tmp_path).unlink()
+
+
+def test_backward_compat_plain_labels_no_suffix() -> None:
+    """Test backward compatibility: labels without state suffix import with None/None states."""
+    # Manually create a label file WITHOUT state suffix
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("0.0\t0.1\td\n")
+        f.write("\\\t0.0\t0.0\n")
+        f.write("0.5\t0.6\t5\n")
+        f.write("\\\t45000.0\t55000.0\n")
+        tmp_path = f.name
+
+    try:
+        labels = import_labels(tmp_path)
+
+        assert len(labels) == 2
+        # First label
+        assert labels[0].label == "d"
+        assert labels[0].detection_state == "None"
+        assert labels[0].classification_state == "None"
+        # Second label
+        assert labels[1].label == "5"
+        assert labels[1].detection_state == "None"
+        assert labels[1].classification_state == "None"
+    finally:
+        Path(tmp_path).unlink()
+
+
+def test_backward_compat_underscore_in_label() -> None:
+    """Test backward compatibility: labels with underscores but no valid 2-char suffix."""
+    # Create a file with a label that contains underscore but not a valid 2-char suffix
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("0.0\t0.1\tmy_label_abc\n")
+        f.write("\\\t0.0\t0.0\n")
+        tmp_path = f.name
+
+    try:
+        labels = import_labels(tmp_path)
+
+        assert len(labels) == 1
+        # The label should not be modified because "abc" is 3 chars, not 2
+        assert labels[0].label == "my_label_abc"
+        assert labels[0].detection_state == "None"
+        assert labels[0].classification_state == "None"
+    finally:
+        Path(tmp_path).unlink()
+
+
 def test_export_labels_detector() -> None:
     """Test detector export (fixed 'd' label, zeroed frequencies)."""
     labels = [

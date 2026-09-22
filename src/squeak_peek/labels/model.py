@@ -32,6 +32,8 @@ class Label:
     end_frequency: float   = 0.0   # Hz
     start_index: int = 0     # sample index
     stop_index: int  = 0     # sample index
+    detection_state: str = "None"  # "None", "Accepted", "Rejected"
+    classification_state: str = "None"  # "None", "Accepted", "Rejected"
 
     @property
     def duration(self) -> float:
