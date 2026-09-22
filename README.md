@@ -22,6 +22,53 @@ then point `Detection.ML.modelPath` at it in your settings JSON to use
 field yet — edit the JSON directly, or set `AppState.settings.detection.ml.modelPath`
 before launching the GUI).
 
+There is also a CNN (Faster R-CNN) object-detection alternative to the ML
+detector — `squeak_peek.detectors.cnn.CNNDetector`, trained by
+`squeak_peek.cnn.train`. Unlike MLDetector's frame classifier, it predicts a
+call's (start_time, end_time, start_frequency, end_frequency) box directly,
+the way DeepSqueak's own detector works. See **Training a CNN detector**
+below.
+
+## Training a CNN detector
+
+Requires the optional `cnn` extra (torch + torchvision):
+
+```bash
+pip install -e ".[cnn]"
+```
+
+### 1. Get labeled training data
+
+DeepSqueak's own training corpus was never publicly released. The
+[USVSEG dataset](https://zenodo.org/records/3428024) (Zenodo, gerbil/mouse/rat
+recordings with hand-scored call times) is: download a species zip, extract
+it, then convert it into this app's label format:
+
+```bash
+squeak-peek-cli convert-usvseg path/to/extracted_dir/
+```
+
+This writes a `<name>_labels.txt` next to each `<name>.wav`. USVSEG's CSVs
+only give call start/end times, not frequency bounds — the converter derives
+each call's frequency band from the real signal energy around it (see
+`squeak_peek.cnn.convert_usvseg.estimate_freq_band`), not a guess.
+
+Any (wav, label) pair in this app's own label format works too — including
+GUI-annotated files and PSD/BSCD/RBD/ML detector output.
+
+### 2. Train
+
+```bash
+squeak-peek-cli train-cnn rec1.wav rec2.wav \
+    --labels rec1_labels.txt --labels rec2_labels.txt \
+    --output data/models/cnn_detector_model.pt
+```
+
+`--backbone mobilenet` (default) is fast and CPU-friendly; `--backbone
+resnet50` is the heavier, more accurate network DeepSqueak itself used —
+wants a GPU. Point `Detection.CNN.modelPath` in your settings JSON at the
+saved checkpoint to use `--detector cnn`.
+
 ## Requirements
 
 - Python 3.11+
@@ -55,10 +102,11 @@ pytest --cov=squeak_peek    # with coverage report
 src/squeak_peek/       # Main installable package
     config.py          # Pydantic settings (mirrors settings/default.json)
     audio/             # WAV I/O and signal processing
-    detectors/         # PSD, BSCD, RBD, ML detectors
+    detectors/         # PSD, BSCD, RBD, ML, CNN detectors
     features/          # 12-D acoustic feature extraction
     labels/            # Label I/O, post-processing, metrics
     ml/                # RF training & hyperparameter optimization
+    cnn/                # Faster R-CNN training, dataset conversion (optional 'cnn' extra)
     gui/               # PyQt6 desktop application
 cli/                   # Click-based headless CLI
 tests/                 # pytest test suite

@@ -223,6 +223,16 @@ class MLParams(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class CNNParams(BaseModel):
+    """Runtime parameters for the CNN (Faster R-CNN) detector."""
+
+    modelPath: str = ""              # path to a saved .pt checkpoint (squeak_peek.cnn.train)
+    minEventDuration: float = 0.003  # minimum event duration after merging (s)
+    sensitivity: float = 0.5         # box-score threshold (0-1); higher = more selective
+
+    model_config = {"populate_by_name": True}
+
+
 class DetectionSettings(BaseModel):
     """Mirrors the 'Detection' section of default.json."""
 
@@ -232,6 +242,7 @@ class DetectionSettings(BaseModel):
     rbd: RBDParams   = Field(alias="RBD",  default_factory=RBDParams)
     post: PostProcessParams = Field(alias="POST", default_factory=PostProcessParams)
     ml: MLParams     = Field(alias="ML",   default_factory=MLParams)
+    cnn: CNNParams   = Field(alias="CNN",  default_factory=CNNParams)
 
     model_config = {"populate_by_name": True}
 

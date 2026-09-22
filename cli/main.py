@@ -25,7 +25,7 @@ from squeak_peek.labels.metrics import compare_labels
 from squeak_peek.labels.model import Label
 from squeak_peek.labels.postprocess import merge_close_labels, remove_short_labels
 
-_DETECTOR_CHOICES = ["psd", "bscd", "rbd", "ml"]
+_DETECTOR_CHOICES = ["psd", "bscd", "rbd", "ml", "cnn"]
 
 
 def _build_detector(name: str, settings: AppSettings) -> AbstractDetector:
@@ -45,6 +45,21 @@ def _build_detector(name: str, settings: AppSettings) -> AbstractDetector:
                 "in your settings JSON, or pass --settings pointing at one that does."
             )
         return MLDetector(det.ml)
+    if name == "cnn":
+        if not det.cnn.modelPath:
+            raise click.ClickException(
+                "The 'cnn' detector needs a trained model. Train one with "
+                "'squeak-peek-cli train-cnn' and set Detection.CNN.modelPath "
+                "in your settings JSON, or pass --settings pointing at one that does."
+            )
+        try:
+            from squeak_peek.detectors.cnn import CNNDetector
+        except ImportError as e:
+            raise click.ClickException(
+                "The 'cnn' detector needs torch/torchvision. Install with: "
+                "pip install squeak-peek-studio[cnn]"
+            ) from e
+        return CNNDetector(det.cnn)
     raise click.ClickException(f"Unknown detector: {name!r}")
 
 
@@ -193,6 +208,85 @@ def train(wav_paths: tuple[Path, ...], label_paths: tuple[Path, ...], output: Pa
     )
     click.echo(f"OOB accuracy: {info['oob_accuracy']:.3f}")
     click.echo(f"Saved model: {output}")
+
+
+@cli.command("train-cnn")
+@click.argument("wav_paths", nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option(
+    "--labels", "-l", "label_paths", multiple=True, required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Label file for each WAV, same order and count as WAV_PATHS.",
+)
+@click.option(
+    "--output", "-o", type=click.Path(path_type=Path),
+    default=Path("data/models/cnn_detector_model.pt"), show_default=True,
+    help="Where to save the trained model checkpoint (.pt).",
+)
+@click.option("--epochs", default=10, show_default=True, type=int)
+@click.option("--batch-size", default=4, show_default=True, type=int)
+@click.option("--lr", default=1e-4, show_default=True, type=float)
+@click.option("--window-s", default=1.0, show_default=True, type=float, help="Spectrogram tile length (s).")
+@click.option("--hop-s", default=0.5, show_default=True, type=float, help="Tile hop during training (s).")
+@click.option(
+    "--backbone", type=click.Choice(["mobilenet", "resnet50"]), default="mobilenet", show_default=True,
+    help="mobilenet = fast, CPU-friendly. resnet50 = heavier, more accurate, wants a GPU.",
+)
+def train_cnn_cmd(
+    wav_paths: tuple[Path, ...], label_paths: tuple[Path, ...], output: Path,
+    epochs: int, batch_size: int, lr: float, window_s: float, hop_s: float, backbone: str,
+) -> None:
+    """Train a CNN (Faster R-CNN) detector model from WAV + label file pairs."""
+    try:
+        from squeak_peek.cnn.train import save_checkpoint, train_cnn
+    except ImportError as e:
+        raise click.ClickException(
+            "train-cnn needs torch/torchvision. Install with: pip install squeak-peek-studio[cnn]"
+        ) from e
+
+    if len(wav_paths) != len(label_paths):
+        raise click.ClickException(
+            f"Got {len(wav_paths)} WAV_PATHS but {len(label_paths)} --labels options; "
+            "pass one --labels per WAV, in the same order."
+        )
+
+    checkpoint = train_cnn(
+        list(zip(wav_paths, label_paths)),
+        window_s=window_s, hop_s=hop_s, epochs=epochs, batch_size=batch_size, lr=lr, backbone=backbone,
+    )
+    save_checkpoint(checkpoint, output)
+
+    info = checkpoint["training_info"]
+    click.echo(f"Trained on {info['n_tiles_train']} tiles ({info['n_tiles_val']} held out for validation)")
+    click.echo(f"Final epoch loss: {info['final_loss']:.4f}")
+    if info["val_ground_truth_boxes"]:
+        click.echo(
+            f"Validation: {info['val_detections_at_0.5']} detections vs. "
+            f"{info['val_ground_truth_boxes']} ground-truth boxes (score>0.5, unmatched)"
+        )
+    click.echo(f"Saved model: {output}")
+
+
+@cli.command("convert-usvseg")
+@click.argument("src_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--output-dir", "-o", type=click.Path(path_type=Path), default=None,
+    help="Where to write converted label files (default: next to each WAV).",
+)
+def convert_usvseg_cmd(src_dir: Path, output_dir: Path | None) -> None:
+    """
+    Convert a USVSEG dataset directory (Zenodo 3428024, extracted — matching
+    <name>.wav/<name>.csv pairs) into this app's label format, ready for
+    'train-cnn' or 'train'.
+    """
+    from squeak_peek.cnn.convert_usvseg import convert_usvseg_dir
+
+    pairs = convert_usvseg_dir(src_dir, output_dir)
+    if not pairs:
+        click.echo(f"No matching <name>.wav/<name>.csv pairs found in: {src_dir}")
+        return
+    for wav_path, label_path in pairs:
+        click.echo(f"{wav_path.name} -> {label_path}")
+    click.echo(f"Converted {len(pairs)} recordings.")
 
 
 if __name__ == "__main__":

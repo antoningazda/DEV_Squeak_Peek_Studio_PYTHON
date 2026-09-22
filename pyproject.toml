@@ -54,6 +54,10 @@ dev = [
 package = [
     "pyinstaller>=6.0",
 ]
+cnn = [
+    "torch>=2.2",
+    "torchvision>=0.17",
+]
 
 [project.scripts]
 squeak-peek     = "squeak_peek.gui.app:main"
