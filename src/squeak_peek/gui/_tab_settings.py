@@ -296,7 +296,22 @@ class SettingsTab(QWidget):
             form, "Sonification semitones:", self._viz_sonif_st,
             "Pitch shift applied when sonifying a segment so ultrasonic calls become audible.",
             "More negative values shift the pitch down further, bringing high-frequency "
-            "calls deeper into human hearing range.",
+            "calls deeper into human hearing range. −36 is exactly three octaves "
+            "(a division by 8), which puts 50 kHz calls at about 6 kHz.",
+        )
+
+        self._viz_sonif_natural = QComboBox()
+        self._viz_sonif_natural.addItem("Match the pitch shift (best quality)", True)
+        self._viz_sonif_natural.addItem("Use the slowdown factor below", False)
+        self._viz_sonif_natural.setCurrentIndex(0 if vis.sonification_natural_speed else 1)
+        self._field(
+            form, "Sonification playback speed:", self._viz_sonif_natural,
+            "How far sonified playback is stretched out in time.",
+            "Matching the pitch shift makes sonification a pure tape-speed transform — "
+            "exactly what a time-expansion bat detector does. Nothing has to be "
+            "resynthesised, so there are no stretching artefacts at all. Choosing an "
+            "independent slowdown factor costs one phase-vocoder pass and sounds "
+            "slightly less clean.",
         )
 
         self._viz_sonif_slowdown = QSpinBox()
@@ -305,7 +320,21 @@ class SettingsTab(QWidget):
         self._field(
             form, "Sonification slowdown factor:", self._viz_sonif_slowdown,
             "Factor by which sonified playback is slowed down.",
-            "Higher values stretch playback out longer and lower its perceived pitch further.",
+            "Only used when the playback speed above is set to use this factor. "
+            "Higher values stretch playback out longer.",
+        )
+
+        self._viz_sonif_denoise = QComboBox()
+        self._viz_sonif_denoise.addItem("On", True)
+        self._viz_sonif_denoise.addItem("Off", False)
+        self._viz_sonif_denoise.setCurrentIndex(0 if vis.sonification_denoise else 1)
+        self._field(
+            form, "Sonification denoising:", self._viz_sonif_denoise,
+            "Suppress the recording's broadband noise floor before shifting it down.",
+            "An ultrasonic recording is mostly noise; shifted into the audible range "
+            "that noise becomes a wall of hiss that buries the calls. A spectral gate "
+            "keyed on the per-bin noise floor leaves the calls standing out of a quiet "
+            "background. Turn it off to hear the raw, unmodified signal.",
         )
 
         return w
@@ -643,6 +672,8 @@ class SettingsTab(QWidget):
         vis.show_loading_dialog         = self._viz_show_loading.currentData()
         vis.sonification_st             = self._viz_sonif_st.value()
         vis.sonification_slowdown       = self._viz_sonif_slowdown.value()
+        vis.sonification_natural_speed  = self._viz_sonif_natural.currentData()
+        vis.sonification_denoise        = self._viz_sonif_denoise.currentData()
 
         # Detectors (one Params sub-tab per registered plugin — see _plugin_form)
         for detector_id, widgets in self._detector_widgets.items():
@@ -755,6 +786,14 @@ class SettingsTab(QWidget):
         self._viz_show_loading.blockSignals(True)
         self._viz_show_loading.setCurrentIndex(0 if vis.show_loading_dialog else 1)
         self._viz_show_loading.blockSignals(False)
+
+        self._viz_sonif_natural.blockSignals(True)
+        self._viz_sonif_natural.setCurrentIndex(0 if vis.sonification_natural_speed else 1)
+        self._viz_sonif_natural.blockSignals(False)
+
+        self._viz_sonif_denoise.blockSignals(True)
+        self._viz_sonif_denoise.setCurrentIndex(0 if vis.sonification_denoise else 1)
+        self._viz_sonif_denoise.blockSignals(False)
 
         # Detectors / classifiers
         for detector_id, widgets in self._detector_widgets.items():

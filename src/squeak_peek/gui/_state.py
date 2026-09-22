@@ -81,6 +81,9 @@ class AppState(QObject):
         self.video_sync_offset = sync_result.offset
         self.video_sync_method = sync_result.method
         self.sonified_track = sonify_full_track(
-            self.samples, self.fs, semitones=self.settings.visualization.sonification_st
+            self.samples,
+            self.fs,
+            semitones=self.settings.visualization.sonification_st,
+            denoise=self.settings.visualization.sonification_denoise,
         )
         self.video_loaded.emit()

@@ -107,12 +107,27 @@ class VisualizationSettings(BaseModel):
 
     # Sonification
     sonification_st: float = Field(
-        alias="SonificationST", default=-35,
-        description="Semitone shift applied during sonification playback.",
+        alias="SonificationST", default=-36,
+        description="Semitone shift applied during sonification playback. "
+                    "-36 is exactly three octaves (a division by 8).",
     )
     sonification_slowdown: int = Field(
-        alias="SonificationSlowdown", default=4,
-        description="Integer factor by which playback is slowed down.",
+        alias="SonificationSlowdown", default=8,
+        description="Integer factor by which playback is slowed down. "
+                    "Only used when SonificationNaturalSpeed is off.",
+    )
+    sonification_natural_speed: bool = Field(
+        alias="SonificationNaturalSpeed", default=True,
+        description="Slow playback down by exactly the pitch ratio. This is a "
+                    "pure tape-speed transform (like a time-expansion bat "
+                    "detector) and needs no phase vocoder, so it is free of "
+                    "stretching artefacts. Turning it off honours "
+                    "SonificationSlowdown at the cost of one vocoder pass.",
+    )
+    sonification_denoise: bool = Field(
+        alias="SonificationDenoise", default=True,
+        description="Apply a spectral gate before shifting, so the recording's "
+                    "broadband noise floor does not come down as a wall of hiss.",
     )
 
     model_config = {"populate_by_name": True}
