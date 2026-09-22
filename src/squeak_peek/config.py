@@ -9,7 +9,7 @@ Usage
 
     # Access any parameter with full IDE type support:
     print(settings.detection.params_for("PSD").fcutMin)   # 40000
-    print(settings.visualization.colormap)                 # "parula"
+    print(settings.visualization.colormap)                 # "invgray"
 
 Detector and classifier parameters are stored generically, keyed by each
 plugin's `id` (see squeak_peek.detectors / squeak_peek.classifiers) —
@@ -92,7 +92,7 @@ class VisualizationSettings(BaseModel):
         alias="SpectrogramMaxFrequency", default=120,
         description="kHz — upper bound of the display frequency axis.",
     )
-    colormap: str = Field(alias="SpectrogramColormap", default="parula")
+    colormap: str = Field(alias="SpectrogramColormap", default="invgray")
 
     show_reference_labels: bool = Field(alias="ShowReferenceLabels", default=True)
     show_labels: bool = Field(alias="ShowLabels", default=True)

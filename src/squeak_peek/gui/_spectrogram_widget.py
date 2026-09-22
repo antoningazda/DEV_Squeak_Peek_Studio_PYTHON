@@ -39,7 +39,11 @@ _GRAY_CM = pg.ColorMap(
 
 # Pitch trace: fixed bright orange, distinct from the 7 selectable label
 # colors and both light/dark theme palettes, drawn on top of the spectrogram.
-_PEN_PITCH = pg.mkPen("#FFA500", width=1.5)
+_PITCH_WIDTH = 3.0
+_PEN_PITCH = pg.mkPen("#FFA500", width=_PITCH_WIDTH)
+
+# Detected/reference label lines and boxes: twice as thick as the pitch trace.
+_LABEL_WIDTH = _PITCH_WIDTH * 2
 
 def _resample_lut_to_256(raw: np.ndarray) -> np.ndarray:
     """Resample an (N, 3) RGB lookup table to exactly (256, 3) via per-channel
@@ -302,8 +306,8 @@ class SpectrogramWidget(QWidget):
     def refresh_theme(self) -> None:
         """(Re-)apply theme-dependent colors. Existing label overlays keep
         their old pens until the next display() call redraws them."""
-        self._pen_det = pg.mkPen(theme.DETECTED_COLOR, width=2.0)
-        self._pen_ref = pg.mkPen(theme.REFERENCE_COLOR, width=2.0)
+        self._pen_det = pg.mkPen(theme.DETECTED_COLOR, width=_LABEL_WIDTH)
+        self._pen_ref = pg.mkPen(theme.REFERENCE_COLOR, width=_LABEL_WIDTH)
         self._col_det = pg.mkColor(theme.DETECTED_COLOR).getRgb()
         self._col_ref = pg.mkColor(theme.REFERENCE_COLOR).getRgb()
 
@@ -352,13 +356,13 @@ class SpectrogramWidget(QWidget):
         if detected_color_name is not None:
             rgba = _get_color_for_name(detected_color_name)
             if rgba:
-                pen_det = pg.mkPen(rgba, width=2.0)
+                pen_det = pg.mkPen(rgba, width=_LABEL_WIDTH)
                 col_det = (int(rgba[0]*255), int(rgba[1]*255), int(rgba[2]*255), int(rgba[3]*255))
 
         if reference_color_name is not None:
             rgba = _get_color_for_name(reference_color_name)
             if rgba:
-                pen_ref = pg.mkPen(rgba, width=2.0)
+                pen_ref = pg.mkPen(rgba, width=_LABEL_WIDTH)
                 col_ref = (int(rgba[0]*255), int(rgba[1]*255), int(rgba[2]*255), int(rgba[3]*255))
 
         i0 = max(0, int(t_start * fs))
@@ -501,37 +505,61 @@ class SpectrogramWidget(QWidget):
         fmin_khz: float,
         fmax_khz: float,
     ) -> None:
-        """Draw start/end lines + text for each label visible in the segment."""
+        """Draw start/end lines + text for each label visible in the segment.
+
+        A label carrying real frequency bounds (start_frequency/end_frequency
+        not both 0 — e.g. reference labels imported from a file with a
+        StartFreq/EndFreq line) gets a full bounding box on the spectrogram
+        instead of full-height start/end lines, since the frequency range is
+        actually known. Detector output currently zeroes both fields (no
+        frequency estimate), so it keeps the full-height line style.
+        """
         text_y = fmax_khz - (fmax_khz - fmin_khz) * 0.04  # just inside top edge
 
         for lbl in labels:
             if lbl.end_time < t_start or lbl.start_time > t_end:
                 continue
 
-            # Vertical lines at start and end on spectrogram
-            for t in (lbl.start_time, lbl.end_time):
-                line = pg.InfiniteLine(pos=t, angle=90, pen=pen, movable=False)
-                self._spec_plot.addItem(line)
-                self._label_items.append((self._spec_plot, line))
+            has_freq_range = lbl.start_frequency != 0.0 or lbl.end_frequency != 0.0
 
-            # Horizontal tick at the top connecting start → end
-            top_line = pg.PlotDataItem(
-                [lbl.start_time, lbl.end_time],
-                [fmax_khz * 0.995, fmax_khz * 0.995],
-                pen=pen,
-            )
-            self._spec_plot.addItem(top_line)
-            self._label_items.append((self._spec_plot, top_line))
+            if has_freq_range:
+                f_lo = min(lbl.start_frequency, lbl.end_frequency) / 1000.0
+                f_hi = max(lbl.start_frequency, lbl.end_frequency) / 1000.0
+                box = pg.PlotDataItem(
+                    [lbl.start_time, lbl.end_time, lbl.end_time, lbl.start_time, lbl.start_time],
+                    [f_lo, f_lo, f_hi, f_hi, f_lo],
+                    pen=pen,
+                )
+                self._spec_plot.addItem(box)
+                self._label_items.append((self._spec_plot, box))
+                top_y = f_hi
+            else:
+                # Vertical lines at start and end on spectrogram
+                for t in (lbl.start_time, lbl.end_time):
+                    line = pg.InfiniteLine(pos=t, angle=90, pen=pen, movable=False)
+                    self._spec_plot.addItem(line)
+                    self._label_items.append((self._spec_plot, line))
+
+                # Horizontal tick at the top connecting start → end
+                top_line = pg.PlotDataItem(
+                    [lbl.start_time, lbl.end_time],
+                    [fmax_khz * 0.995, fmax_khz * 0.995],
+                    pen=pen,
+                )
+                self._spec_plot.addItem(top_line)
+                self._label_items.append((self._spec_plot, top_line))
+                top_y = text_y
 
             # Text label
             label_text = lbl.label if lbl.label else ""
             if label_text:
                 txt = pg.TextItem(text=label_text, color=color, anchor=(0.0, 1.0))
-                txt.setPos(lbl.start_time, text_y)
+                txt.setPos(lbl.start_time, top_y)
                 self._spec_plot.addItem(txt)
                 self._label_items.append((self._spec_plot, txt))
 
-            # Thin lines on waveform plot too
+            # Thin lines on waveform plot too (amplitude-vs-time only, so
+            # start/end markers regardless of whether a frequency box was drawn)
             for t in (lbl.start_time, lbl.end_time):
                 wline = pg.InfiniteLine(pos=t, angle=90, pen=pen, movable=False)
                 self._wave_plot.addItem(wline)
