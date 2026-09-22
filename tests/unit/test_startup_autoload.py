@@ -7,8 +7,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from squeak_peek.config import AppSettings
 from squeak_peek.gui._state import AppState
 
@@ -91,22 +89,11 @@ def test_autoload_defaults_with_valid_settings_and_files() -> None:
                 "Sensitivity": 0.5,
                 "MinDuration": 0.01,
             },
-            "Theme": {
-                "Background": [1.0, 1.0, 1.0],
-                "Text": [0.0, 0.0, 0.0],
-                "Primary": [0.5, 0.5, 0.5],
-                "Accent": [0.0, 0.5, 1.0],
-            },
             "Other": {
                 "DefaultSettingsFile": "default.json",
             },
         }
         settings_file.write_text(json.dumps(settings_data))
-
-        state = AppState()
-        data_input_tab = MagicMock()
-
-        from squeak_peek.gui.app import _autoload_defaults
 
         # Patch the settings path lookup to use our temp directory
         with patch("squeak_peek.gui.app.Path") as mock_path_cls:
@@ -123,8 +110,7 @@ def test_autoload_defaults_with_valid_settings_and_files() -> None:
             pass
 
         # For now, test the logic directly with proper mocking
-        # Create a mock state and tab
-        state = AppState()
+        # Create a mock tab
         data_input_tab = MagicMock()
         data_input_tab._pending_wav = ""
         data_input_tab._pending_det = ""
@@ -192,12 +178,6 @@ def test_autoload_defaults_handles_missing_files() -> None:
                 "ModelPath": "",
                 "Sensitivity": 0.5,
                 "MinDuration": 0.01,
-            },
-            "Theme": {
-                "Background": [1.0, 1.0, 1.0],
-                "Text": [0.0, 0.0, 0.0],
-                "Primary": [0.5, 0.5, 0.5],
-                "Accent": [0.0, 0.5, 1.0],
             },
             "Other": {
                 "DefaultSettingsFile": "default.json",

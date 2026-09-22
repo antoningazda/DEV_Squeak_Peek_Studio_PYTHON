@@ -502,17 +502,10 @@ class SettingsTab(QWidget):
         self._theme_combo.currentIndexChanged.connect(self._on_theme_mode_changed)
         form.addRow("Color mode:", self._theme_combo)
 
-        # WP27 THEME DECISION (NOT IMPLEMENTED):
-        # config.ThemeSettings (MATLAB Light/Gray/Custom plus 4 raw RGB color pickers)
-        # is intentionally NOT wired into this UI. The MATLAB app had Light/Gray/Custom
-        # theme presets with custom RGB color pickers. Since landing WP27, we have a
-        # newer design-token dark-mode system (System/Light/Dark toggle above, not
-        # related to ThemeSettings). Reconciling these two overlapping theme systems
-        # is a product decision for a human to make, not a mechanical port. The settings
-        # round-trip correctly through save/load JSON (config.ThemeSettings fields are
-        # preserved even if not shown in UI), so no data is lost. A future WP27b could
-        # either (a) add a 4th "Custom" mode with RGB pickers, or (b) deprecate the raw
-        # ThemeSettings in favor of the cleaner design-token approach. Choose one.
+        # WP27 THEME DECISION (resolved): MATLAB's Light/Gray/Custom presets with
+        # 4 raw RGB color pickers (formerly config.ThemeSettings) were deliberately
+        # not ported. The design-token System/Light/Dark system above is the app's
+        # only theme mechanism now; config.ThemeSettings has been removed.
 
         return w
 

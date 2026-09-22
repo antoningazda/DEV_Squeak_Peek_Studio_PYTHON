@@ -3,14 +3,13 @@
 import numpy as np
 import pytest
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt
 
 from squeak_peek.gui._spectrogram_widget import (
+    _PARULA_LUT,
+    _TURBO_LUT,
     SpectrogramWidget,
     _build_colormap,
     _get_color_for_name,
-    _PARULA_LUT,
-    _TURBO_LUT,
 )
 from squeak_peek.labels.model import Label
 

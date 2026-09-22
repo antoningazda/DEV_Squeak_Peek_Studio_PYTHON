@@ -9,7 +9,6 @@ a MATLAB runtime.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from squeak_peek.audio.sonify import sonify_segment
 

@@ -19,7 +19,6 @@ from squeak_peek.config import (
     PostProcessParams,
     PSDParams,
     RBDParams,
-    ThemeSettings,
 )
 
 # ── Default construction ────────────────────────────────────────────────────
@@ -48,11 +47,6 @@ class TestDefaults:
         pp = PostProcessParams()
         assert pp.maxGapToMerge == pytest.approx(0.005)
         assert pp.minLabelLength == pytest.approx(0.001)
-
-    def test_theme_defaults_are_rgb_tuples(self):
-        t = ThemeSettings()
-        assert isinstance(t.background, tuple)
-        assert len(t.background) == 3
 
     def test_label_edit_classification_list(self):
         le = LabelEditSettings()
@@ -120,17 +114,6 @@ class TestFromJson:
         assert "c5" in settings.label_edit.classification_list
         assert len(settings.label_edit.classification_list) == 6
 
-    def test_theme_background_is_white(self, settings):
-        r, g, b = settings.theme.background
-        assert r == pytest.approx(1.0)
-        assert g == pytest.approx(1.0)
-        assert b == pytest.approx(1.0)
-
-    def test_theme_primary_colour(self, settings):
-        r, g, b = settings.theme.primary
-        assert r == pytest.approx(0.490, abs=0.01)
-        assert g == pytest.approx(0.808, abs=0.01)
-
     def test_batch_mode_default_false(self, settings):
         assert settings.data_input.batch_mode is False
 
@@ -150,7 +133,6 @@ class TestRoundTrip:
         assert reloaded.detection.psd.fcutMin == settings.detection.psd.fcutMin
         assert reloaded.detection.rbd.wlen == pytest.approx(settings.detection.rbd.wlen)
         assert reloaded.visualization.colormap == settings.visualization.colormap
-        assert reloaded.theme.background == settings.theme.background
 
     def test_defaults_round_trip(self, tmp_path):
         s = AppSettings.defaults()

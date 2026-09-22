@@ -10,7 +10,11 @@ Usage
     # Access any parameter with full IDE type support:
     print(settings.detection.psd.fcutMin)       # 40000
     print(settings.visualization.colormap)       # "parula"
-    print(settings.theme.background)             # (1.0, 1.0, 1.0)
+
+Note: the app's visual theme (light/dark/system) is handled entirely by
+squeak_peek.gui._theme's design-token system, not by this module — MATLAB's
+Light/Gray/Custom raw-RGB theme model was deliberately not ported (see
+GUI_PARITY_PLAN.md, WP27).
 """
 
 from __future__ import annotations
@@ -18,17 +22,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
-
-# ── Colour triple (MATLAB stores as [R, G, B] floats 0-1) ──────────────────
-
-RGBTuple = tuple[float, float, float]
-
-
-def _rgb(v: list[float] | tuple[float, ...]) -> RGBTuple:
-    r, g, b = v
-    return (float(r), float(g), float(b))
-
+from pydantic import BaseModel, Field
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Section: DataInput
@@ -243,45 +237,6 @@ class DetectionSettings(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Section: Theme
-# ═══════════════════════════════════════════════════════════════════════════
-
-class ThemeSettings(BaseModel):
-    """
-    UI colour palette.
-    MATLAB stores colours as [R, G, B] lists of floats in [0, 1].
-    """
-
-    background: RGBTuple = Field(
-        alias="Background", default=(1.0, 1.0, 1.0)
-    )
-    text: RGBTuple = Field(
-        alias="Text", default=(0.05, 0.05, 0.05)
-    )
-    primary: RGBTuple = Field(
-        alias="Primary",
-        default=(0.490, 0.808, 0.824),
-    )
-    accent: RGBTuple = Field(
-        alias="Accent",
-        default=(0.976, 0.753, 0.431),
-    )
-
-    model_config = {"populate_by_name": True}
-
-    @field_validator("background", "text", "primary", "accent", mode="before")
-    @classmethod
-    def _parse_rgb(cls, v: list | tuple) -> RGBTuple:
-        return _rgb(v)
-
-    def to_qcolor(self, attr: str):
-        """Convert a colour attribute to a PyQt6 QColor (import deferred)."""
-        from PyQt6.QtGui import QColor  # noqa: PLC0415
-        r, g, b = getattr(self, attr)
-        return QColor(int(r * 255), int(g * 255), int(b * 255))
-
-
-# ═══════════════════════════════════════════════════════════════════════════
 # Root settings model
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -303,9 +258,6 @@ class AppSettings(BaseModel):
     )
     detection: DetectionSettings = Field(
         alias="Detection", default_factory=DetectionSettings
-    )
-    theme: ThemeSettings = Field(
-        alias="Theme", default_factory=ThemeSettings
     )
 
     model_config = {"populate_by_name": True}
