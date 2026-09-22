@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+import numpy as np
 
 from squeak_peek.audio.io import load_wav
 from squeak_peek.config import AppSettings
@@ -23,7 +24,11 @@ from squeak_peek.detectors.rbd import RBDDetector
 from squeak_peek.labels.io import export_labels_detector, import_labels
 from squeak_peek.labels.metrics import compare_labels
 from squeak_peek.labels.model import Label
-from squeak_peek.labels.postprocess import merge_close_labels, remove_short_labels
+from squeak_peek.labels.postprocess import (
+    filter_broadband_labels,
+    merge_close_labels,
+    remove_short_labels,
+)
 
 _DETECTOR_CHOICES = ["psd", "bscd", "rbd", "ml", "cnn"]
 
@@ -63,9 +68,32 @@ def _build_detector(name: str, settings: AppSettings) -> AbstractDetector:
     raise click.ClickException(f"Unknown detector: {name!r}")
 
 
-def _postprocess(labels: list[Label], settings: AppSettings) -> list[Label]:
-    """Apply the standard merge + remove-short post-processing pipeline."""
+def _detector_band(detector_name: str, settings: AppSettings) -> tuple[float, float]:
+    """The detector's own analysis band, for band-limited post-processing."""
+    params = getattr(settings.detection, detector_name, None)
+    return (
+        getattr(params, "fcutMin", 40_000.0),
+        getattr(params, "fcutMax", 120_000.0),
+    )
+
+
+def _postprocess(
+    labels: list[Label],
+    settings: AppSettings,
+    signal: np.ndarray | None = None,
+    fs: int | None = None,
+    band: tuple[float, float] = (40_000.0, 120_000.0),
+) -> list[Label]:
+    """Apply the tonality (optional) + merge + remove-short post-processing pipeline."""
     post = settings.detection.post
+
+    # Before merging: merging spans the gap between two calls, which would
+    # dilute the tonality of an otherwise clean detection.
+    if post.minTonality > 0 and signal is not None and fs:
+        labels = filter_broadband_labels(
+            labels, signal, fs, post.minTonality, fcut_min=band[0], fcut_max=band[1]
+        )
+
     labels = merge_close_labels(labels, post.maxGapToMerge)
     labels = remove_short_labels(labels, post.minLabelLength)
     return labels
@@ -75,7 +103,7 @@ def _run_detection(wav_path: Path, detector_name: str, settings: AppSettings) ->
     signal, fs = load_wav(wav_path)
     detector = _build_detector(detector_name, settings)
     labels = detector.detect(signal, fs)
-    return _postprocess(labels, settings)
+    return _postprocess(labels, settings, signal, fs, _detector_band(detector_name, settings))
 
 
 def _default_output_path(wav_path: Path, detector_name: str) -> Path:
@@ -105,9 +133,16 @@ def cli() -> None:
     help="Path to settings JSON file.",
 )
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=None, help="Output label file path.")
-def detect(wav_path: Path, detector: str, settings: Path, output: Path | None) -> None:
+@click.option(
+    "--min-tonality", type=float, default=None,
+    help="Drop broadband (non-USV) detections below this tonality score, 0-1. "
+         "Overrides Detection.POST.minTonality. Try 0.5.",
+)
+def detect(wav_path: Path, detector: str, settings: Path, output: Path | None, min_tonality: float | None) -> None:
     """Run a detector on a single WAV file."""
     app_settings = AppSettings.from_json(settings)
+    if min_tonality is not None:
+        app_settings.detection.post.minTonality = min_tonality
     labels = _run_detection(wav_path, detector.lower(), app_settings)
 
     out_path = output or _default_output_path(wav_path, detector.lower())
@@ -132,9 +167,16 @@ def detect(wav_path: Path, detector: str, settings: Path, output: Path | None) -
     show_default=True,
 )
 @click.option("--output-dir", "-o", type=click.Path(path_type=Path), default=None)
-def batch(wav_dir: Path, detector: str, settings: Path, output_dir: Path | None) -> None:
+@click.option(
+    "--min-tonality", type=float, default=None,
+    help="Drop broadband (non-USV) detections below this tonality score, 0-1. "
+         "Overrides Detection.POST.minTonality. Try 0.5.",
+)
+def batch(wav_dir: Path, detector: str, settings: Path, output_dir: Path | None, min_tonality: float | None) -> None:
     """Run a detector on all WAV files in a directory."""
     app_settings = AppSettings.from_json(settings)
+    if min_tonality is not None:
+        app_settings.detection.post.minTonality = min_tonality
     wav_files = sorted(wav_dir.glob("*.wav"))
     if not wav_files:
         click.echo(f"No .wav files found in: {wav_dir}")

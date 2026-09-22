@@ -36,6 +36,31 @@ class TestDetectCommand:
         lines = out_path.read_text().splitlines()
         assert len(lines) % 2 == 0  # 2-line-per-label format
 
+    def test_min_tonality_filters_broadband_detections(
+        self, example_wav_path: Path, tmp_path: Path, settings
+    ) -> None:
+        """--min-tonality is opt-in and must only ever remove detections."""
+        settings_path = tmp_path / "settings.json"
+        settings.save_json(settings_path)
+        runner = CliRunner()
+
+        def run(extra: list[str], out_name: str) -> int:
+            out_path = tmp_path / out_name
+            result = runner.invoke(
+                cli,
+                ["detect", str(example_wav_path), "--detector", "psd",
+                 "--settings", str(settings_path), "--output", str(out_path)] + extra,
+            )
+            assert result.exit_code == 0, result.output
+            return len(out_path.read_text().splitlines()) // 2
+
+        n_default = run([], "default.txt")
+        n_filtered = run(["--min-tonality", "0.5"], "filtered.txt")
+        n_zero = run(["--min-tonality", "0"], "zero.txt")
+
+        assert n_filtered < n_default, "tonality filter removed nothing"
+        assert n_zero == n_default, "0 must disable the filter, matching the default"
+
     def test_detect_ml_without_model_configured_fails_clearly(
         self, example_wav_path: Path, tmp_path: Path, settings
     ) -> None:

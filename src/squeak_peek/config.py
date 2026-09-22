@@ -209,6 +209,10 @@ class PostProcessParams(BaseModel):
 
     maxGapToMerge: float = 0.005     # merge events closer than this gap (s)
     minLabelLength: float = 0.001    # discard events shorter than this (s)
+    # Drop detections whose energy is broadband rather than a narrowband USV
+    # whistle. 0 disables it; 0.5 roughly doubled PSD's precision on USVSEG
+    # mouse data. Off by default because it trades recall for precision.
+    minTonality: float = 0.0
 
     model_config = {"populate_by_name": True}
 

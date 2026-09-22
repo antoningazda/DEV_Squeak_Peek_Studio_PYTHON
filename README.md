@@ -29,6 +29,31 @@ call's (start_time, end_time, start_frequency, end_frequency) box directly,
 the way DeepSqueak's own detector works. See **Training a CNN detector**
 below.
 
+## Tonality post-processing (optional)
+
+Rodent USVs are narrowband FM whistles, while most false positives from the
+energy/change-point detectors are broadband (cage knocks, bedding rustle,
+scratching). `--min-tonality` drops detections whose energy isn't
+concentrated around a moving peak frequency:
+
+```bash
+squeak-peek-cli detect audio.wav --detector bscd --min-tonality 0.5
+```
+
+It is **off by default** (`Detection.POST.minTonality = 0`) because it trades
+recall for precision. Measured on held-out USVSEG mouse recordings, with the
+threshold chosen on separate training recordings:
+
+| detector | | precision | recall | F1 |
+|---|---|---|---|---|
+| PSD  | off | 0.465 | 0.707 | 0.561 |
+| PSD  | `--min-tonality 0.5` | 0.934 | 0.675 | **0.784** |
+| BSCD | off | 0.628 | 0.827 | 0.714 |
+| BSCD | `--min-tonality 0.5` | 0.899 | 0.763 | **0.825** |
+
+It runs before merging, so a merged detection spanning the gap between two
+calls is not penalised. Detections too short to score are always kept.
+
 ## Training a CNN detector
 
 Requires the optional `cnn` extra (torch + torchvision):
