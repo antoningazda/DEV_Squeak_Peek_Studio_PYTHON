@@ -24,6 +24,7 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtCore import QRectF, Qt, pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
+from scipy.ndimage import median_filter
 
 from squeak_peek.audio.filters import band_restrict, compute_stft
 from squeak_peek.labels.model import Label
@@ -35,6 +36,10 @@ _GRAY_CM = pg.ColorMap(
     pos=np.array([0.0, 1.0]),
     color=np.array([[210, 210, 210, 255], [15, 15, 15, 255]], dtype=np.uint8),
 )
+
+# Pitch trace: fixed bright orange, distinct from the 7 selectable label
+# colors and both light/dark theme palettes, drawn on top of the spectrogram.
+_PEN_PITCH = pg.mkPen("#FFA500", width=1.5)
 
 def _resample_lut_to_256(raw: np.ndarray) -> np.ndarray:
     """Resample an (N, 3) RGB lookup table to exactly (256, 3) via per-channel
@@ -329,6 +334,7 @@ class SpectrogramWidget(QWidget):
         reference_labels: list[Label] | None = None,
         show_detected: bool = True,
         show_reference: bool = True,
+        show_pitch: bool = True,
         colormap_name: str | None = None,
         detected_color_name: str | None = None,
         reference_color_name: str | None = None,
@@ -402,10 +408,16 @@ class SpectrogramWidget(QWidget):
         fmax_khz = fmax_hz / 1_000.0
         fmin_khz = fmin_hz / 1_000.0
 
+        labels_for_pitch: list[Label] = []
         if show_detected and detected_labels:
             self._draw_labels(detected_labels, t_start, t_end, pen_det, col_det, fmin_khz, fmax_khz)
+            labels_for_pitch.extend(detected_labels)
         if show_reference and reference_labels:
             self._draw_labels(reference_labels, t_start, t_end, pen_ref, col_ref, fmin_khz, fmax_khz)
+            labels_for_pitch.extend(reference_labels)
+
+        if show_pitch and labels_for_pitch:
+            self._draw_pitch_trace(labels_for_pitch, f_khz, Sxx_sub, t_abs, t_start, t_end)
 
     def clear(self) -> None:
         self._img.clear()
@@ -527,6 +539,41 @@ class SpectrogramWidget(QWidget):
                 wline = pg.InfiniteLine(pos=t, angle=90, pen=pen, movable=False)
                 self._wave_plot.addItem(wline)
                 self._label_items.append((self._wave_plot, wline))
+
+    def _draw_pitch_trace(
+        self,
+        labels: list[Label],
+        f_khz: np.ndarray,
+        Sxx_sub: np.ndarray,
+        t_abs: np.ndarray,
+        t_start: float,
+        t_end: float,
+    ) -> None:
+        """Overlay the dominant-frequency contour for each visible call.
+
+        Traces the peak-power frequency bin per STFT column (the same
+        "DomFreq" measure used for ML features) within each label's time
+        span, so the line follows the pitch only where a squeak is playing.
+        """
+        peak_idx = np.argmax(Sxx_sub, axis=0)
+        pitch_khz = f_khz[peak_idx]
+
+        for lbl in labels:
+            if lbl.end_time < t_start or lbl.start_time > t_end:
+                continue
+
+            mask = (t_abs >= lbl.start_time) & (t_abs <= lbl.end_time)
+            if np.count_nonzero(mask) < 2:
+                continue
+
+            trace_t = t_abs[mask]
+            trace_f = pitch_khz[mask]
+            if len(trace_f) >= 3:
+                trace_f = median_filter(trace_f, size=3, mode="nearest")
+
+            curve = pg.PlotDataItem(trace_t, trace_f, pen=_PEN_PITCH)
+            self._spec_plot.addItem(curve)
+            self._label_items.append((self._spec_plot, curve))
 
     def _on_boundary_line_moved(self, line_type: str, line: pg.InfiniteLine) -> None:
         """Handle boundary line drag completion."""
