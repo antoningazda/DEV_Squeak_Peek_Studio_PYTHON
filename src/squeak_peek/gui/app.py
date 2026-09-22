@@ -335,8 +335,10 @@ def _autoload_defaults(state: AppState, data_input_tab: DataInputTab) -> None:
     This is a convenience feature; failures are logged but do not crash the app.
     """
     try:
-        # Find the settings file relative to the package/repo root
-        package_root = Path(__file__).parent.parent.parent  # Up to squeak_peek repo root
+        # Find the settings file relative to the package/repo root.
+        # __file__ is <repo>/src/squeak_peek/gui/app.py, so four parents
+        # (gui -> squeak_peek -> src -> <repo>) reach the repo root.
+        package_root = Path(__file__).parent.parent.parent.parent
         settings_path = package_root / "settings" / "default.json"
 
         if not settings_path.exists():
@@ -410,7 +412,7 @@ def main() -> None:
 
     state = AppState()
     window = MainWindow(state)
-    window.show()
+    window.showMaximized()
 
     # Try to auto-load default settings and files (non-fatal if it fails)
     if window._data_tab:

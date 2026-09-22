@@ -38,7 +38,7 @@ class VisualizationTab(QWidget):
         t.signal.changed.connect(self._on_theme_changed)
 
         # Sonification playback state
-        self._playback_stream: Any = None
+        self._is_playing: bool = False
         self._playback_timer: QTimer | None = None
         self._playback_start_time: float = 0.0
         self._playback_duration: float = 0.0
@@ -204,8 +204,12 @@ class VisualizationTab(QWidget):
             # Disable sonify button during playback
             self._sonify_btn.setEnabled(False)
 
-            # Start playback with sounddevice
-            self._playback_stream = sd.play(sonified, samplerate=target_fs)
+            # Start playback with sounddevice. sd.play() is fire-and-forget —
+            # it returns None, not a stream handle — so "is playback active"
+            # is tracked separately via self._is_playing rather than by
+            # checking its return value.
+            sd.play(sonified, samplerate=target_fs)
+            self._is_playing = True
             self._playback_start_time = time.monotonic()
             self._playback_duration = dur_out
             self._playback_start_cursor = start_time
@@ -225,7 +229,7 @@ class VisualizationTab(QWidget):
     def _on_playback_tick(self) -> None:
         """Update moving cursor line during playback."""
         try:
-            if self._playback_stream is None or self._playback_timer is None:
+            if not self._is_playing or self._playback_timer is None:
                 return
 
             elapsed = time.monotonic() - self._playback_start_time
@@ -274,7 +278,8 @@ class VisualizationTab(QWidget):
         if self._playback_wave_line is not None:
             self._spec._wave_plot.removeItem(self._playback_wave_line)
             self._playback_wave_line = None
-        self._playback_stream = None
+        sd.stop()
+        self._is_playing = False
         self._sonify_btn.setEnabled(True)
 
     def _on_spectrogram_right_clicked(self, clicked_time: float) -> None:
