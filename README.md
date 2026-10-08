@@ -56,11 +56,7 @@ calls is not penalised. Detections too short to score are always kept.
 
 ## Training a CNN detector
 
-Requires the optional `cnn` extra (torch + torchvision):
-
-```bash
-pip install -e ".[cnn]"
-```
+torch + torchvision are part of the standard install (`pip install -e .`).
 
 ### 1. Get labeled training data
 
@@ -98,7 +94,7 @@ saved checkpoint to use `--detector cnn`.
 
 Detectors find *where* calls are; the **Classification** tab decides *what*
 they are, using the two-stage USV pipeline ported from the standalone
-`USV_Klasifikace` tool (`squeak_peek.usv_classifier`, needs the `cnn` extra):
+`USV_Klasifikace` tool (`squeak_peek.usv_classifier`; PyTorch is part of the standard install):
 
 1. a compact CNN looks at each call's spectrogram and decides **USV vs NOISE**,
 2. a Random Forest assigns the **call type** from acoustic features, and marks
