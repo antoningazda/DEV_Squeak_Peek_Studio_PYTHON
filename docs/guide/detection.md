@@ -23,6 +23,7 @@ same recording in a single pass.
 | **PSD** | Power Spectral Density — thresholds band power against an adaptive noise floor. Fast and robust on clear, high-SNR recordings. |
 | **BSCD** | Bayesian Sequential Change Detection — flags points where the signal's statistics shift abruptly. Good for call onsets/offsets in noisier audio. |
 | **RBD** | Relative Bayesian Difference — compares autoregressive models on either side of a candidate boundary. More precise boundaries, more compute per call. |
+| **PITCH** | Pitch trace — marks every stretch where a coherent frequency contour stands out from the background, i.e. exactly where [Visualization](visualization.md) draws its orange trace. Ignores broadband knocks and rustle; misses calls too faint for the contour to lock on. |
 | **ML** | Random Forest sliding-window classifier over acoustic features. Needs a trained model file. |
 | **CNN** | Faster R-CNN predicting a time/frequency box per call. Needs a trained checkpoint. |
 
@@ -30,6 +31,15 @@ The list is alphabetical and the first entry, **BSCD**, is ticked when the
 app starts. Start with **PSD** if your recordings are clean; if they are
 noisy or PSD keeps clipping call onsets, stay with **BSCD**. See [Methods](../methods.md) for what each one
 actually computes, how to tune it, and when to prefer it.
+
+!!! tip "PITCH only reports what you can already see"
+
+    Because it reports exactly the stretches Visualization traces in orange,
+    you can judge it before you run it: open a recording, look at the trace,
+    and that is the detector's output. It is also the only detector that
+    writes a real frequency per call, which is what its **Min/Max call
+    frequency** filter acts on — see
+    [Settings](settings.md#detector-sub-tabs).
 
 !!! note "ML and CNN need a model first"
 
@@ -65,6 +75,7 @@ two always agree.
 | **PSD** | **on** | On raw recordings the in-band noise floor is most of PSD's envelope; denoising roughly doubles its precision |
 | **BSCD** | off | Its mean threshold is fitted to raw audio; denoising adds false positives |
 | **RBD** | off | Its own bandpass already does the work |
+| **PITCH** | off | It references every frequency bin to its own median, which removes stationary noise lines by itself |
 
 Denoising estimates each frequency bin's background level from the
 recording itself and subtracts it (Settings →

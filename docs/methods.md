@@ -17,11 +17,14 @@ a *detection* setting, unlike the display range in
 | [RBD](#rbd) | no | slow | The most precise boundaries | Expensive; most parameters to tune |
 | [ML](#ml-random-forest) | yes | fast | Learns your noise, not just energy | Only as good as its training data |
 | [CNN](#cnn-faster-r-cnn) | yes | medium | Predicts frequency extent too | Needs real training data |
+| [PITCH](#pitch-trace) | no | fast | Immune to broadband noise; reports a real frequency | Misses faint calls; splits calls whose contour drops out |
 
 **Start with PSD.** If it misses soft calls or clips onsets in noisy
 recordings, try BSCD. Reach for RBD when boundary accuracy is the point.
 Train an ML or CNN detector when the classical detectors keep firing on a
-noise source specific to your setup.
+noise source specific to your setup. Use PITCH as a second opinion when
+cage noise is the problem: it keys on a coherent frequency contour rather
+than on energy, so knocks and rustle never trigger it.
 
 Whichever you pick, read [Tonality filtering](#tonality-filtering) — it is
 the cheapest large accuracy gain available. PSD also needs
@@ -310,6 +313,73 @@ The detector tiles the recording, runs the network on each tile, and merges
 boxes that overlap across tile boundaries.
 
 → [Training a CNN detector](training.md#cnn-detector-faster-r-cnn)
+
+---
+
+## Pitch trace
+
+The detector behind the orange contour in
+[Visualization](guide/visualization.md). It reports one event per stretch
+of audio where a **coherent frequency contour** stands out from the
+background — so what you see traced on screen is exactly what it detects.
+
+Each STFT bin is referenced to its own median over the analysed block,
+removing stationary noise lines; each frame is then referenced to its own
+median across frequency. A frame counts as part of a call when its
+strongest bin stands `prominenceDb` above that. Within each run of call
+frames the contour is a **Viterbi path** that trades bin power against
+frequency jumps — these calls often show several parallel bands of similar
+power, and a plain per-frame argmax hops between them.
+
+That last step is what makes the detector noise-immune in a way the
+energy-based detectors are not: a knock or a rustle is loud across all
+frequencies at once, so no single bin stands out from the frame's own
+median, and no contour forms. The cost is symmetric — a call too faint for
+the contour to lock on is simply not there, and a call whose contour drops
+out mid-way is reported as two events.
+
+It is also the **only detector that writes a real frequency per call**
+(the others leave both frequency fields at 0), which is what makes the
+call-band filter below possible.
+
+### Parameters
+
+| Parameter | Default | What it does |
+|---|---|---|
+| `fcutMin` / `fcutMax` | `40` / `120` kHz | The band searched for a contour |
+| `segmentLength` | `1024` samples | STFT window. Matches Visualization's default, so events line up with the trace. Large windows slow the contour search considerably |
+| `overlapFactor` | `0.5` | Finer boundaries at the cost of speed |
+| `prominenceDb` | `12` dB | How far a frame's strongest bin must stand above the background |
+| `minRunFrames` | `3` | Shortest run of call frames accepted as an event |
+| `maxJumpKhz` | `6` kHz | Largest frequency change allowed between two frames |
+| `jumpPenaltyDbPerKhz` | `2` dB/kHz | Cost per kHz of frequency change when choosing the contour |
+| `maxContourFreqKhz` | `100` kHz | Bins above this are ignored when searching |
+| `minCallFreqKhz` / `maxCallFreqKhz` | `0` / `250` kHz | Discard events whose contour sits outside this band |
+| `minDurationMs` | `0` ms | Discard events shorter than this |
+| `blockSeconds` | `20` s | Block length the recording is processed in |
+
+### The call-band filter
+
+`minCallFreqKhz` / `maxCallFreqKhz` throw away whole events whose **median
+contour frequency** falls outside the band — "drop anything above 100 kHz
+or below 50 kHz".
+
+This is not the same as narrowing `fcutMin`/`fcutMax` to the same range.
+The search band changes what the tracker *sees*: narrow it and the
+background median is estimated from fewer bins, and a contour near the new
+edge can be pulled onto it. The call-band filter runs **after** the contour
+has been found over the full search band, so it only decides what to keep.
+Prefer it when you want to exclude a frequency range; leave the search band
+wide.
+
+### Blocks
+
+Long recordings are processed in `blockSeconds` blocks so the whole
+spectrogram is never in memory at once. Blocks overlap by one window, so a
+call sitting on a seam is seen intact in at least one of them; the
+duplicate that produces is merged away afterwards. Each block's noise
+background is estimated from that block, so shorter blocks adapt faster to
+drifting noise.
 
 ---
 

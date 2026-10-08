@@ -6,6 +6,8 @@ Detection engines — self-registering plugins.
     RBDDetector   — Relative Bayesian Difference
     MLDetector    — Random Forest sliding-window detector (see squeak_peek.ml
                     for training/calibration)
+    PitchDetector — one event per stretch where a pitch contour holds (the
+                    same tracking the Visualization tab draws)
 
 To add a new detector: drop a module in this package defining an
 AbstractDetector subclass with a unique ``id`` (see base.py). Every module

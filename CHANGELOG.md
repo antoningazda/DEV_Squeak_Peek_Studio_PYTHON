@@ -5,6 +5,13 @@ All notable user-facing changes to Squeak Peek Studio. Format loosely follows
 
 ## [Unreleased]
 
+- New **PITCH** detector: one event per stretch where a coherent frequency
+  contour stands out from the background — exactly what Visualization draws
+  as its orange trace, since both now call the same tracker
+  (`squeak_peek.features.pitch`). It ignores broadband knocks and rustle,
+  and is the only detector that writes a real frequency per call, so its
+  **Min/Max call frequency** parameters can drop calls outside a band
+  without narrowing the search band and disturbing the tracking.
 - Classification also writes `labels/<recording>_classified_no_noise.txt`:
   the classified labels with the calls rejected as `NOISE` removed, so one
   run gives both the full record and the set to carry into analysis.
