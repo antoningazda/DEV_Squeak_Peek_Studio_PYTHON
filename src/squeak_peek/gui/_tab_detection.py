@@ -25,7 +25,7 @@ import squeak_peek.classifiers  # noqa: F401  (registers built-in classifiers)
 import squeak_peek.detectors  # noqa: F401  (registers built-in detectors)
 from squeak_peek.classifiers.base import AbstractClassifier
 from squeak_peek.detectors.base import AbstractDetector
-from squeak_peek.labels.io import export_labels_detector
+from squeak_peek.labels.io import export_labels, export_labels_detector
 from squeak_peek.labels.postprocess import (
     filter_broadband_labels,
     merge_close_labels,
@@ -404,7 +404,9 @@ class DetectionTab(QWidget):
                         classified = classifier.classify(labels, samples, fs)
                         filename = f"{base_name}_{det_name}_{cls_name}_{timestamp}_detected.txt"
                         out_file = export_path / filename
-                        export_labels_detector(out_file, classified)
+                        # Full format: export_labels_detector would overwrite
+                        # every call type with the placeholder "d".
+                        export_labels(out_file, classified)
                         display_labels = classified
                     summary = f"Finished {det_name}: exported {len(classifiers)} classified file(s)."
                 else:

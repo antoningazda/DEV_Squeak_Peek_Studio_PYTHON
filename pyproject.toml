@@ -39,6 +39,7 @@ dependencies = [
 
     # ── Video (import / sync / export) ──────────────────────────────────────
     "imageio-ffmpeg>=0.5",      # bundled static ffmpeg binary — audio extraction + muxing
+    "Pillow>=10.0",              # spectrogram-panel frame compositing for video export
 
     # ── Hyperparameter optimisation ───────────────────────────────────────
     "optuna>=3.5",
@@ -98,6 +99,11 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Vendored verbatim from the standalone USV_Klasifikace tool (compact style);
+# kept byte-comparable with upstream rather than reformatted.
+"src/squeak_peek/usv_classifier/core/*" = ["E", "F", "I", "UP"]
 
 # ── Mypy ──────────────────────────────────────────────────────────────────
 [tool.mypy]

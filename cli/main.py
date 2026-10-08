@@ -5,6 +5,8 @@ Usage:
     squeak-peek-cli detect audio.wav --detector psd
     squeak-peek-cli batch wav_dir/ --detector bscd
     squeak-peek-cli evaluate detected.txt reference.txt
+    squeak-peek-cli classify-calls model/ results/ -r rec.wav rec_detected.txt
+    squeak-peek-cli train-classifier training.csv model_run/
 """
 
 from __future__ import annotations
@@ -316,6 +318,97 @@ def convert_usvseg_cmd(src_dir: Path, output_dir: Path | None) -> None:
     for wav_path, label_path in pairs:
         click.echo(f"{wav_path.name} -> {label_path}")
     click.echo(f"Converted {len(pairs)} recordings.")
+
+
+@cli.command("classify-calls")
+@click.argument("model", type=click.Path(exists=True, path_type=Path))
+@click.argument("output", type=click.Path(path_type=Path))
+@click.option(
+    "--recording", "-r", "recordings", nargs=2, multiple=True, required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="A WAV and its detected-label file. Repeat for more recordings.",
+)
+@click.option("--device", default="cpu", show_default=True, type=click.Choice(["cpu", "auto", "mps"]))
+@click.option("--drop-noise", is_flag=True, help="Leave NOISE calls out of the classified label files.")
+def classify_calls_cmd(model: Path, output: Path, recordings, device: str, drop_noise: bool) -> None:
+    """
+    Classify detected calls with a trained USV model (CNN USV/NOISE + Random
+    Forest call types). MODEL is a model folder (manifest.json); OUTPUT must
+    be a new folder.
+    """
+    from squeak_peek.usv_classifier import api
+
+    inputs = [api.ClassifyInput(wav, api.read_label_file(txt)) for wav, txt in recordings]
+    try:
+        result = api.classify_recordings(
+            inputs, model, output, device=device, drop_noise=drop_noise,
+            progress=lambda _f, msg: click.echo(msg),
+        )
+    except (api.TorchMissingError, ValueError, FileExistsError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    for name, n in result.counts().items():
+        click.echo(f"  {name}: {n}")
+    click.echo(f"Results: {result.out_dir}")
+
+
+@cli.command("train-classifier")
+@click.argument("recordings_csv", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("output", type=click.Path(path_type=Path))
+@click.option("--epochs", default=12, show_default=True, type=int, help="CNN epochs.")
+@click.option("--trees", default=200, show_default=True, type=int, help="Random Forest trees.")
+@click.option("--seed", default=7, show_default=True, type=int)
+@click.option("--min-examples", default=10, show_default=True, type=int,
+              help="Fewer training examples than this: a call type is learned as plain USV.")
+@click.option("--generic-labels", default="d", show_default=True, help="Labels meaning 'USV without a type'.")
+@click.option("--device", default="cpu", show_default=True, type=click.Choice(["cpu", "auto", "mps"]))
+def train_classifier_cmd(
+    recordings_csv: Path, output: Path, epochs: int, trees: int, seed: int,
+    min_examples: int, generic_labels: str, device: str,
+) -> None:
+    """
+    Train a USV call-type model. RECORDINGS_CSV has columns WavFile and
+    LabelFile (call types), optionally DetectedFile (unmatched detections
+    become NOISE), GroupID and Split; paths are relative to the CSV. OUTPUT
+    must be a new folder; the model is written to OUTPUT/run/model.
+    """
+    import pandas as pd
+
+    from squeak_peek.usv_classifier import api
+
+    table = pd.read_csv(recordings_csv, dtype=str, keep_default_na=False)
+    missing = {"WavFile", "LabelFile"} - set(table.columns)
+    if missing:
+        raise click.ClickException(f"{recordings_csv} lacks column(s): {', '.join(sorted(missing))}")
+    root = recordings_csv.resolve().parent
+    inputs = [
+        api.TrainingInput(
+            wav=root / row["WavFile"],
+            labels=root / row["LabelFile"],
+            detected=root / row["DetectedFile"] if row.get("DetectedFile") else None,
+            group=row.get("GroupID", ""),
+            split=row.get("Split", "") or "auto",
+        )
+        for row in table.to_dict("records")
+    ]
+    options = api.TrainingOptions(
+        epochs=epochs, trees=trees, seed=seed, min_examples=min_examples,
+        generic_labels=tuple(s.strip() for s in generic_labels.split(",") if s.strip()),
+        device=device,
+    )
+    try:
+        result = api.train_model(inputs, output, options, progress=lambda _f, msg: click.echo(msg))
+    except (api.TorchMissingError, ValueError, FileExistsError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(result.training_set.counts().to_string())
+    for note in result.training_set.notes:
+        click.echo(f"Note: {note}")
+    if result.info:
+        click.echo(result.info.summary())
+    if result.metrics:
+        m = result.metrics
+        click.echo(f"Test: accuracy {m['Accuracy']:.3f}, balanced accuracy {m['BalancedAccuracy']:.3f}, "
+                   f"macro-F1 {m['MacroF1']:.3f}")
+    click.echo(f"Model: {result.model_dir}")
 
 
 if __name__ == "__main__":

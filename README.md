@@ -94,6 +94,43 @@ resnet50` is the heavier, more accurate network DeepSqueak itself used —
 wants a GPU. Point `Detection.CNN.modelPath` in your settings JSON at the
 saved checkpoint to use `--detector cnn`.
 
+## Classifying call types (Classification tab)
+
+Detectors find *where* calls are; the **Classification** tab decides *what*
+they are, using the two-stage USV pipeline ported from the standalone
+`USV_Klasifikace` tool (`squeak_peek.usv_classifier`, needs the `cnn` extra):
+
+1. a compact CNN looks at each call's spectrogram and decides **USV vs NOISE**,
+2. a Random Forest assigns the **call type** from acoustic features, and marks
+   calls it is not confident about as **UNCERTAIN** (thresholds calibrated on
+   held-out recordings).
+
+**Classify** — pick a model folder, add recordings with their detected labels
+(the loaded recording, the Data Input batch folders, or files), and run.
+Results show in a filterable table (double-click jumps Visualization to the
+call), the loaded recording's labels get the call types for Label Edit, and
+the output folder holds the tool's own files (`predictions.csv`,
+`expert_review_queue.csv`, `calls_features.csv`) plus
+`labels/<recording>_classified.txt`. The same model also runs from the
+Detection tab as the **USV_MODEL** classifier.
+
+**Train model** — add labeled recordings: a call-type label file (e.g. your
+reference labels) and, optionally, the detector's output for the same WAV —
+detections that overlap no labeled call become NOISE examples, as do calls
+rejected in Label Edit. Recordings sharing animals must share a *Group*;
+whole groups are split ~60/20/20 into train / calibration / test (at least 5
+groups), so the reported test scores come from animals the model never saw.
+Call types with too few examples are learned as plain USV. The model is
+written to `<output>/run/model` (`manifest.json`, `rf.joblib`, `cnn/cnn.pt`)
+and is interchangeable with the standalone tool in both directions.
+
+Headless equivalents:
+
+```bash
+squeak-peek-cli train-classifier training.csv model_run/   # WavFile,LabelFile[,DetectedFile,GroupID,Split]
+squeak-peek-cli classify-calls model_run/run/model results/ -r rec.wav rec_detected.txt
+```
+
 ## Requirements
 
 - Python 3.11+
@@ -132,6 +169,7 @@ src/squeak_peek/       # Main installable package
     labels/            # Label I/O, post-processing, metrics
     ml/                # RF training & hyperparameter optimization
     cnn/                # Faster R-CNN training, dataset conversion (optional 'cnn' extra)
+    usv_classifier/    # CNN + RF call-type model (core/ = vendored USV_Klasifikace pipeline)
     gui/               # PyQt6 desktop application
 cli/                   # Click-based headless CLI
 tests/                 # pytest test suite

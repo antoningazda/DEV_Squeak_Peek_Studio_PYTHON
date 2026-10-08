@@ -32,6 +32,8 @@ from squeak_peek import __version__ as APP_VERSION  # noqa: E402
 plugin_hidden_imports = (
     collect_submodules("squeak_peek.detectors")
     + collect_submodules("squeak_peek.classifiers")
+    # USV call-type model: imported lazily from inside functions.
+    + collect_submodules("squeak_peek.usv_classifier")
     # sonify.py imports soxr inside a function, and librosa reaches it the
     # same way, so nothing statically references this compiled extension.
     + ["soxr", "scipy.ndimage"]
