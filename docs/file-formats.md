@@ -77,6 +77,9 @@ The settings file is a nested JSON document mirroring the
 [Settings tab](guide/settings.md) and shared with the original MATLAB
 project. A source checkout ships `settings/default.json`.
 
+An abridged example — every key below is valid, but a shipped file only
+carries the ones it overrides:
+
 ```json
 {
   "Detection": {

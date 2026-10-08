@@ -39,7 +39,7 @@ as NOISE examples without throwing away the correctly detected calls whose
 | <kbd>←</kbd> | Previous call |
 | <kbd>D</kbd> / <kbd>Shift</kbd>+<kbd>D</kbd> | Accept / reject the detection |
 | <kbd>C</kbd> / <kbd>Shift</kbd>+<kbd>C</kbd> | Accept / reject the classification |
-| <kbd>Space</kbd> | **Accept both and advance** |
+| <kbd>Space</kbd> | **Accept both & advance** |
 
 In practice most of a review pass is <kbd>Space</kbd>, held down, stopping
 whenever something looks wrong. All bindings are rebindable —

@@ -262,7 +262,7 @@ class DataInputTab(QWidget):
         """Load whatever paths are currently in the WAV/Detected/Reference
         fields — read live from the widgets rather than from a separate
         shadow variable, so this always reflects what's actually shown
-        (typed, pasted, or set by Browse/autoload), never a stale copy."""
+        (set by Browse or autoload), never a stale copy."""
         errors: list[str] = []
 
         wav_path = self._wav_edit.text().strip()

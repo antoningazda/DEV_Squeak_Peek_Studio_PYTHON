@@ -19,8 +19,8 @@ The default. You pick up to three files:
 | **Select reference labels (.txt)** | No | Ground-truth labels, used to score detections in [Metrics](metrics.md) |
 | **Select detected labels (.txt)** | No | A previously detected label file to load and continue editing in Label Edit |
 
-Each button opens a file chooser, and the field beside it is editable — you
-can also paste or type a path.
+Each button opens a file chooser; the field beside it shows the chosen path
+and is filled in by the chooser rather than typed into.
 
 Click **Load files**. The WAV is read into memory and the status line shows
 
@@ -49,9 +49,9 @@ Select **Batch folder** and you pick folders instead of files:
 
 | Field | What it is |
 |---|---|
-| **WAV folder** | Folder of `.wav` recordings, processed one after another |
-| **Detected labels folder** | Previously detected label files, matched to recordings **by filename** |
-| **Reference labels folder** | Ground-truth label files, matched the same way |
+| **Select USV folder** | Folder of `.wav` recordings, processed one after another |
+| **Select reference labels folder** | Ground-truth label files, matched to recordings **by filename** |
+| **Select detected labels folder** | Previously detected label files, matched the same way |
 
 Each field shows how many matching files were found, so you can see at a
 glance whether the filename matching worked before you run anything.
