@@ -78,8 +78,7 @@ class CNNDetector(AbstractDetector):
     display_name = "CNN"
     description = (
         "Deep-learning (Faster R-CNN) detector predicting a time/frequency box per call. "
-        "Needs the optional 'cnn' extra (pip install squeak-peek-studio[cnn]) and a model "
-        "file configured in Settings -> CNN detector."
+        "Needs a model file configured in Settings -> CNN detector."
     )
     Params = CNNParams
 

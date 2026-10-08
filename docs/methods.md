@@ -16,7 +16,7 @@ a *detection* setting, unlike the display range in
 | [BSCD](#bscd) | no | fast | Onsets/offsets in noisier audio | More false positives on transients |
 | [RBD](#rbd) | no | slow | The most precise boundaries | Expensive; most parameters to tune |
 | [ML](#ml-random-forest) | yes | fast | Learns your noise, not just energy | Only as good as its training data |
-| [CNN](#cnn-faster-r-cnn) | yes | medium | Predicts frequency extent too | Needs PyTorch and real training data |
+| [CNN](#cnn-faster-r-cnn) | yes | medium | Predicts frequency extent too | Needs real training data |
 
 **Start with PSD.** If it misses soft calls or clips onsets in noisy
 recordings, try BSCD. Reach for RBD when boundary accuracy is the point.
@@ -193,9 +193,9 @@ ML detector's frame classifier, it predicts a call's full box directly —
 start time, end time, start frequency **and** end frequency — the way
 DeepSqueak's own detector works.
 
-Needs PyTorch — `pip install -e ".[cnn]"` covers it in every version (see
+Needs PyTorch, which `pip install -e .` already installs (see
 [Install](install.md#neural-network-components)). The bundled desktop app
-already includes it.
+includes it too.
 
 ### Parameters
 

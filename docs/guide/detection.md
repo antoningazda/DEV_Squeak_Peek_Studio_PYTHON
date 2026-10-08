@@ -16,7 +16,7 @@ selection.
 | **BSCD** | Bayesian Sequential Change Detection — flags points where the signal's statistics shift abruptly. Good for call onsets/offsets in noisier audio. |
 | **RBD** | Relative Bayesian Difference — compares autoregressive models on either side of a candidate boundary. More precise boundaries, more compute per call. |
 | **ML** | Random Forest sliding-window classifier over acoustic features. Needs a trained model file. |
-| **CNN** | Faster R-CNN predicting a time/frequency box per call. Needs PyTorch and a trained checkpoint. |
+| **CNN** | Faster R-CNN predicting a time/frequency box per call. Needs a trained checkpoint. |
 
 Start with **PSD**. If your recordings are noisy or PSD keeps clipping call
 onsets, try **BSCD**. See [Methods](../methods.md) for what each one

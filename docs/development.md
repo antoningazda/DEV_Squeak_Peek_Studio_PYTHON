@@ -11,7 +11,7 @@ cd DEV_Squeak_Peek_Studio_PYTHON
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-pip install -e ".[dev,cnn]"      # cnn = PyTorch, for the neural-network parts
+pip install -e ".[dev]"          # PyTorch is a core dependency, nothing extra needed
 ```
 
 Python **3.11 or 3.12**.

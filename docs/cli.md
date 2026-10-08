@@ -126,8 +126,7 @@ Then point `Detection.ML.modelPath` at the result.
 
 ## `train-cnn`
 
-Train a CNN (Faster R-CNN) detector. Needs PyTorch
-([see Install](install.md#neural-network-components)).
+Train a CNN (Faster R-CNN) detector.
 
 ```bash
 squeak-peek-cli train-cnn [OPTIONS] WAV_PATHS...

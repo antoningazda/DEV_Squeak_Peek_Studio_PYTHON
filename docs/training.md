@@ -98,11 +98,8 @@ Label files must be given in the **same order and count** as the WAV files.
 ## CNN detector (Faster R-CNN)
 
 Predicts a full time/frequency box per call rather than classifying frames.
-Needs PyTorch ([see Install](install.md#neural-network-components)):
-
-```bash
-pip install -e ".[cnn]"
-```
+PyTorch comes with the standard install, so there is nothing extra to set
+up.
 
 ```bash
 squeak-peek-cli train-cnn rec1.wav rec2.wav \

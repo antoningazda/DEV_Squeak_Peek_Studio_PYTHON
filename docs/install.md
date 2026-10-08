@@ -101,24 +101,19 @@ squeak-peek-cli      # headless batch processing
 
 ### Neural-network components
 
-The [CNN detector](methods.md#cnn-faster-r-cnn) and the
-[call-type classifier](guide/classification.md) need PyTorch, for both
-training and inference. This command gets you everything in every version:
+Nothing extra to do. The [CNN detector](methods.md#cnn-faster-r-cnn) and the
+[call-type classifier](guide/classification.md) need PyTorch, and
+`pip install -e .` already installs it — torch and torchvision are core
+dependencies, because the Classification tab is a core feature. The
+downloadable installers ship with PyTorch inside too.
 
-```bash
-pip install -e ".[cnn]"
-```
+!!! note "The old `cnn` extra still works"
 
-!!! note "You may already have it"
+    PyTorch used to be an optional `cnn` extra. The extra is still there as
+    an empty alias so existing install commands and scripts keep working —
+    it just does nothing now.
 
-    PyTorch is a core dependency in current versions, so a plain
-    `pip install -e .` is enough and the `cnn` extra is a harmless no-op
-    kept for compatibility. In older versions it was an optional extra.
-    The command above is correct either way.
-
-    The downloadable installers always ship with PyTorch inside.
-
-### Other extras
+### Optional extras
 
 | Extra | Install | Gives you |
 |---|---|---|
