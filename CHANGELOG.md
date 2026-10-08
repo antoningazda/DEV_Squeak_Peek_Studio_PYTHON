@@ -5,6 +5,8 @@ All notable user-facing changes to Squeak Peek Studio. Format loosely follows
 
 ## [Unreleased]
 
+## [0.0.9] — 2026-10-08
+
 - Added pre-detection denoising: stationary background noise is estimated
   per frequency bin from the recording itself and subtracted before a
   detector runs. It is a per-detector setting (`denoise`; a checkbox per
