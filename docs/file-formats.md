@@ -66,6 +66,10 @@ So `d_Dc` means: label `d`, detection **accepted**, classification
 **rejected**. A file with no suffixes is simply one nobody has reviewed yet;
 both forms load fine.
 
+The [USV model classifier](guide/classification.md) writes these too: a
+predicted call type gets `C`, while `NOISE`, `UNCERTAIN` and best guesses
+(`5t?`) get `c`, marking them for review.
+
 This is what lets [classifier training](guide/classification.md#train-model)
 use your rejected detections as NOISE examples.
 
@@ -154,6 +158,7 @@ A [classification run](guide/classification.md#classify) writes a folder:
 | `expert_review_queue.csv` | Uncertain calls plus an audit sample — your review worklist |
 | `calls_features.csv` | The extracted acoustic features per call |
 | `labels/<recording>_classified.txt` | One label file per recording, in the format above |
+| `labels/<recording>_classified_no_noise.txt` | The same, without the calls classified `NOISE` |
 
 Columns you will see in `predictions.csv` include `RecordingID`,
 `Prediction`, `RFMaxProbability`, `UncertainReason`, `ClusterPred` and

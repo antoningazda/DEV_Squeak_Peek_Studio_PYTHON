@@ -8,7 +8,7 @@ is, before and after detection.
   ![The Visualization tab: waveform, spectrogram, label overlays and pitch traces](../assets/screenshots/visualization.png#only-light){ .spk-shot }
   ![The Visualization tab: waveform, spectrogram, label overlays and pitch traces](../assets/screenshots/visualization-dark.png#only-dark){ .spk-shot }
   <figcaption>One second of the example recording: six calls, detected labels in
-  cyan, reference labels in white, and the orange pitch trace over each call.</figcaption>
+  cyan, reference labels in magenta, and the orange pitch trace over each call.</figcaption>
 </figure>
 
 ## Moving around
@@ -62,8 +62,8 @@ Three checkboxes:
 | **Pitch trace** | The estimated fundamental frequency of each call, drawn over the spectrogram |
 
 Detected and reference labels are drawn in different colours (cyan and
-white by default) so you can see at a glance where they agree and where they
-do not — overlapping boxes are matches, a lone white box is a missed call,
+magenta by default) so you can see at a glance where they agree and where they
+do not — overlapping boxes are matches, a lone magenta box is a missed call,
 a lone cyan box is a likely false positive.
 
 !!! tip "Visual evaluation before numerical evaluation"

@@ -41,7 +41,9 @@ logger = logging.getLogger(__name__)
 ProgressFn = Callable[[float | None, str], None]
 CancelFn = Callable[[], bool]
 
-#: ClusterPred values that are not call types.
+#: ClusterPred values that are not call types. predictions_to_labels writes
+#: them with classification state "Rejected" (suffix c), so Label Edit and
+#: training treat them as needing review.
 NOT_A_TYPE = {"NOISE", "UNCERTAIN", "PROCESSING_ERROR"}
 
 SPLITS = ("auto", "train", "calibration", "test")
@@ -256,6 +258,27 @@ class ClassifyInput:
     wav: Path
     labels: list[Label]             # segments to classify (detector output)
     recording_id: str = ""
+    labels_file: Path | None = None  # where ``labels`` came from, for write-back
+
+
+# Where classify_recordings also saves each recording's classified labels:
+#   "none"      — only <out_dir>/labels/
+#   "beside"    — <labels_file stem>_classified.txt next to the source file
+#                 (next to the WAV when there is no source file)
+#   "overwrite" — replace the source label file (same fallback as "beside")
+WRITE_BACK_MODES = ("none", "beside", "overwrite")
+
+
+def write_back_target(item: ClassifyInput, mode: str) -> Path | None:
+    """The file write-back ``mode`` saves ``item``'s classified labels to."""
+    if mode not in WRITE_BACK_MODES:
+        raise ValueError(f"Unknown write-back mode {mode!r}; expected one of {WRITE_BACK_MODES}.")
+    if mode == "none":
+        return None
+    if mode == "overwrite" and item.labels_file is not None:
+        return Path(item.labels_file)
+    base = Path(item.labels_file or item.wav)
+    return base.with_name(f"{base.stem}_classified.txt")
 
 
 @dataclass
@@ -265,6 +288,8 @@ class ClassificationResult:
     labels: dict[str, list[Label]]           # RecordingID -> classified labels
     label_files: dict[str, Path]             # RecordingID -> exported .txt
     wavs: dict[str, Path]                    # RecordingID -> WAV
+    written_back: dict[str, Path] = field(default_factory=dict)  # RecordingID -> write-back file
+    noise_free_files: dict[str, Path] = field(default_factory=dict)  # -> same labels, NOISE dropped
 
     def counts(self) -> pd.Series:
         return self.predictions.ClusterPred.astype(str).value_counts()
@@ -287,7 +312,9 @@ def predictions_to_labels(
 ) -> list[Label]:
     """Copy each source label with ``.label`` set to its prediction.
 
-    Rows are matched by SourceRow (1-based index into ``source``, see
+    ``classification_state`` becomes "Accepted" for a call type and
+    "Rejected" for NOISE / UNCERTAIN / errors (including best guesses like
+    ``5t?``); ``detection_state`` is kept. Rows are matched by SourceRow (1-based index into ``source``, see
     write_segments). Segments the pipeline dropped as unparsable intervals
     keep their original label.
     """
@@ -300,7 +327,9 @@ def predictions_to_labels(
             continue
         if drop_noise and str(row.ClusterPred) == "NOISE":
             continue
-        out.append(replace(lbl, label=label_text(row, guess_uncertain=guess_uncertain)))
+        state = "Rejected" if str(row.ClusterPred) in NOT_A_TYPE else "Accepted"
+        out.append(replace(lbl, label=label_text(row, guess_uncertain=guess_uncertain),
+                           classification_state=state))
     return out
 
 
@@ -313,6 +342,7 @@ def classify_recordings(
     cache_dir: str | Path | None = None,
     drop_noise: bool = False,
     guess_uncertain: bool = True,
+    write_back: str = "none",
     progress: ProgressFn = _noop_progress,
     cancelled: CancelFn = _never,
 ) -> ClassificationResult:
@@ -322,7 +352,11 @@ def classify_recordings(
     calls_features.csv (+ .diagnostics.json), predictions.csv,
     expert_review_queue.csv, inference_manifest.json — plus inputs/ (the
     exact segments used) and labels/<id>_classified.txt in the app's label
-    format.
+    format, plus labels/<id>_classified_no_noise.txt — the same labels with
+    the calls the CNN rejected as NOISE removed (not written when
+    ``drop_noise`` already excludes them). ``write_back`` (see
+    WRITE_BACK_MODES) also saves the full labels beside, or over, each
+    input's ``labels_file``.
     """
     _core()
     from .core.common import new_directory, read_table, write_csv, write_json
@@ -333,6 +367,7 @@ def classify_recordings(
 
     if not inputs:
         raise ValueError("No recordings to classify.")
+    targets = [write_back_target(i, write_back) for i in inputs]
     progress(None, "Loading model…")
     loaded = load_model(model, device)
     config = FeatureConfig(**loaded[0]["feature_config"])
@@ -391,14 +426,28 @@ def classify_recordings(
     # ── Back to the app's label format
     from squeak_peek.labels.io import export_labels
     labels, files = {}, {}
+    noise_free = {}
     for rid, src in sources.items():
         pred = prediction[prediction.RecordingID.astype(str) == rid]
         labels[rid] = predictions_to_labels(pred, src, drop_noise=drop_noise, guess_uncertain=guess_uncertain)
         files[rid] = out / "labels" / f"{rid}_classified.txt"
         files[rid].parent.mkdir(parents=True, exist_ok=True)
         export_labels(files[rid], labels[rid])
+        # Same labels minus the calls the CNN rejected, as a second file — so
+        # one run gives both the full record and a ready-to-use clean set.
+        # With drop_noise the main file is already that, so there is no second.
+        if not drop_noise:
+            noise_free[rid] = out / "labels" / f"{rid}_classified_no_noise.txt"
+            export_labels(noise_free[rid],
+                          predictions_to_labels(pred, src, drop_noise=True,
+                                                guess_uncertain=guess_uncertain))
+    written = {}
+    for rid, target in zip(ids, targets):
+        if target is not None:
+            export_labels(target, labels[rid])
+            written[rid] = target
     progress(1.0, f"Classified {len(prediction)} calls.")
-    return ClassificationResult(out, prediction, labels, files, wavs)
+    return ClassificationResult(out, prediction, labels, files, wavs, written, noise_free)
 
 
 def classify_signal(

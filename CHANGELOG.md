@@ -5,6 +5,23 @@ All notable user-facing changes to Squeak Peek Studio. Format loosely follows
 
 ## [Unreleased]
 
+- Classification also writes `labels/<recording>_classified_no_noise.txt`:
+  the classified labels with the calls rejected as `NOISE` removed, so one
+  run gives both the full record and the set to carry into analysis.
+- The Metrics tab scores the loaded labels automatically when you open it,
+  and keeps them up to date while it is open. Previously the numbers stayed
+  blank, or stale, until you pressed **Compute metrics**.
+- Classified labels now carry a review state: a predicted call type is
+  written as classification accepted (`5t_xC`), `NOISE`, `UNCERTAIN` and
+  best guesses (`5t?`) as rejected (`c5?_xc`). Previously every call was
+  exported `_xx`, so Label Edit's classification counters stayed at zero
+  and training read best guesses like `5t?` as their own call type.
+- Classification can write results back to the source: **Save labels** in
+  the Classification tab (`--write-back beside|overwrite` on
+  `classify-calls`) also saves `<label file>_classified.txt` next to each
+  detected-label file, or overwrites it; the app asks before replacing an
+  existing file.
+
 ## [0.0.9] — 2026-10-08
 
 - Added pre-detection denoising: stationary background noise is estimated

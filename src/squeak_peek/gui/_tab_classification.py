@@ -455,6 +455,18 @@ class ClassificationTab(QWidget):
             lambda: self._browse_dir(self._cls_out_edit, "Select results folder"),
         )
         form.addRow("Output folder:", row)
+        self._cls_write_back = QComboBox()
+        for text, mode in (("Results folder only", "none"),
+                           ("Also beside each label file (…_classified.txt)", "beside"),
+                           ("Also overwrite the detected-label files", "overwrite")):
+            self._cls_write_back.addItem(text, mode)
+        self._cls_write_back.setToolTip(
+            "Where else the classified labels are saved. 'Beside' writes <label file>_classified.txt "
+            "next to each recording's detected-label file; 'Overwrite' replaces that file. "
+            "Recordings added with 'Add loaded' have no label file and get <WAV>_classified.txt "
+            "next to the WAV instead."
+        )
+        form.addRow("Save labels:", self._cls_write_back)
         self._cls_update_loaded = QCheckBox("Show results on the loaded recording")
         self._cls_update_loaded.setToolTip(
             "Replace the loaded recording's detected labels with the classified ones, so "
@@ -892,11 +904,20 @@ class ClassificationTab(QWidget):
             labels = row.labels
             if row.from_state and self._state.wav_path == row.wav and self._state.detected_labels:
                 labels = list(self._state.detected_labels)   # pick up later Label Edit changes
-            inputs.append(api.ClassifyInput(row.wav, labels))
+            inputs.append(api.ClassifyInput(row.wav, labels, labels_file=row.labels_path))
         out = Path(self._cls_out_edit.text().strip() or _default_out(inputs[0].wav, "classification"))
         if out.exists():
             QMessageBox.warning(self, "Output exists", f"{out} already exists — choose a new folder.")
             return
+        write_back = self._cls_write_back.currentData()
+        existing = [p for p in (api.write_back_target(i, write_back) for i in inputs) if p and p.exists()]
+        if existing:
+            names = "\n".join(p.name for p in existing[:10]) + ("\n…" if len(existing) > 10 else "")
+            if QMessageBox.question(
+                self, "Overwrite label files?",
+                f"Classifying will overwrite {len(existing)} existing label file(s):\n\n{names}",
+            ) != QMessageBox.StandardButton.Yes:
+                return
         device = self._cls_device.currentText()
         drop_noise, guess = self._cls_drop_noise.isChecked(), self._cls_guess.isChecked()
         cache = _feature_cache_dir()
@@ -905,7 +926,7 @@ class ClassificationTab(QWidget):
         def job(progress, cancelled):
             return api.classify_recordings(
                 inputs, model, out, device=device, cache_dir=cache,
-                drop_noise=drop_noise, guess_uncertain=guess,
+                drop_noise=drop_noise, guess_uncertain=guess, write_back=write_back,
                 progress=progress, cancelled=cancelled,
             )
 
@@ -936,7 +957,12 @@ class ClassificationTab(QWidget):
         if counts.get("PROCESSING_ERROR", 0):
             parts.append(f"errors {int(counts['PROCESSING_ERROR'])}")
         parts.append("types: " + (", ".join(f"{k} {v}" for k, v in types.items()) or "—"))
-        self._cls_summary.setText(" · ".join(parts) + f"\nSaved to {result.out_dir}")
+        saved = f"\nSaved to {result.out_dir}"
+        if result.noise_free_files:
+            saved += " (labels/ holds both the full set and a NOISE-free copy)"
+        if result.written_back:
+            saved += f" and {len(result.written_back)} label file(s) written back"
+        self._cls_summary.setText(" · ".join(parts) + saved)
 
         applied = ""
         loaded = self._state.wav_path.resolve() if self._state.wav_path else None
@@ -944,6 +970,10 @@ class ClassificationTab(QWidget):
             for rid, wav in self._result_wavs.items():
                 if wav == loaded:
                     self._state.detected_labels = result.labels[rid]
+                    # Point Data Input at the file these labels came from —
+                    # the write-back copy when there is one, else the run's own.
+                    self._state.detected_labels_path = (
+                        result.written_back.get(rid) or result.label_files[rid])
                     self._add_call_types(result.labels[rid])
                     self._state.labels_changed.emit()
                     applied = " Loaded recording updated."

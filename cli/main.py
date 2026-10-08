@@ -363,7 +363,14 @@ def convert_usvseg_cmd(src_dir: Path, output_dir: Path | None) -> None:
 )
 @click.option("--device", default="cpu", show_default=True, type=click.Choice(["cpu", "auto", "mps"]))
 @click.option("--drop-noise", is_flag=True, help="Leave NOISE calls out of the classified label files.")
-def classify_calls_cmd(model: Path, output: Path, recordings, device: str, drop_noise: bool) -> None:
+@click.option(
+    "--write-back", default="none", show_default=True, type=click.Choice(["none", "beside", "overwrite"]),
+    help="Also save classified labels next to each detected-label file (<name>_classified.txt) "
+         "or overwrite it.",
+)
+def classify_calls_cmd(
+    model: Path, output: Path, recordings, device: str, drop_noise: bool, write_back: str,
+) -> None:
     """
     Classify detected calls with a trained USV model (CNN USV/NOISE + Random
     Forest call types). MODEL is a model folder (manifest.json); OUTPUT must
@@ -371,16 +378,18 @@ def classify_calls_cmd(model: Path, output: Path, recordings, device: str, drop_
     """
     from squeak_peek.usv_classifier import api
 
-    inputs = [api.ClassifyInput(wav, api.read_label_file(txt)) for wav, txt in recordings]
+    inputs = [api.ClassifyInput(wav, api.read_label_file(txt), labels_file=txt) for wav, txt in recordings]
     try:
         result = api.classify_recordings(
-            inputs, model, output, device=device, drop_noise=drop_noise,
+            inputs, model, output, device=device, drop_noise=drop_noise, write_back=write_back,
             progress=lambda _f, msg: click.echo(msg),
         )
     except (api.TorchMissingError, ValueError, FileExistsError) as exc:
         raise click.ClickException(str(exc)) from exc
     for name, n in result.counts().items():
         click.echo(f"  {name}: {n}")
+    for path in result.written_back.values():
+        click.echo(f"Labels: {path}")
     click.echo(f"Results: {result.out_dir}")
 
 

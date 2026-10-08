@@ -29,6 +29,9 @@ class AppState(QObject):
         self.fs: int = 250_000
         self.wav_path: Path | None = None
         self.detected_labels: list[Label] = []
+        # Where detected_labels last came from, so Data Input can show which
+        # file is in memory after Detection or Classification replaces them.
+        self.detected_labels_path: Path | None = None
         self.reference_labels: list[Label] = []
         self.settings: AppSettings = AppSettings.defaults()
         self.segment_start: float = 0.0

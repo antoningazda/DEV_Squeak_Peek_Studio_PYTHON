@@ -524,6 +524,7 @@ class DetectionTab(QWidget):
                 # For single file mode, update state with last detector/classifier result
                 if total_files == 1:
                     self._state.detected_labels = display_labels
+                    self._state.detected_labels_path = out_file
                     self._state.labels_changed.emit()
 
             except Exception as exc:  # noqa: BLE001

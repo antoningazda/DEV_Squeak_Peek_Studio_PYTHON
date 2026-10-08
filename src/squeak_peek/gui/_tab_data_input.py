@@ -38,7 +38,7 @@ class DataInputTab(QWidget):
         self._setup_ui()
         state.wav_loaded.connect(self._on_wav_loaded)
         # Labels load after the WAV; without this the counts stayed at 0.
-        state.labels_changed.connect(self._refresh_info)
+        state.labels_changed.connect(self._on_labels_changed)
         t.signal.changed.connect(self._apply_theme)
 
     def _apply_theme(self) -> None:
@@ -302,6 +302,7 @@ class DataInputTab(QWidget):
             try:
                 labels = load_labels(det_path)
                 self._state.detected_labels = labels
+                self._state.detected_labels_path = Path(det_path)
                 self._state.labels_changed.emit()
             except Exception as exc:
                 errors.append(f"Detected labels: {exc}")
@@ -341,6 +342,16 @@ class DataInputTab(QWidget):
     def _on_wav_loaded(self) -> None:
         if self._state.wav_path:
             self._wav_edit.setText(str(self._state.wav_path))
+        self._refresh_info()
+
+    def _on_labels_changed(self) -> None:
+        """Follow the labels in memory: Detection and Classification replace
+        them with their own output, and the field must name that file rather
+        than the one last browsed to."""
+        path = self._state.detected_labels_path
+        text = str(path) if path else ""
+        if text != self._det_edit.text().strip():
+            self._det_edit.setText(text)
         self._refresh_info()
 
     def _refresh_info(self) -> None:

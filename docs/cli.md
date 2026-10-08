@@ -199,6 +199,7 @@ new folder** — results are never overwritten.
 | `-r, --recording FILE...` | **required** | A WAV and its detected-label file. Repeat for more recordings |
 | `--device [cpu\|auto\|mps]` | `cpu` | `mps` = Apple Silicon GPU |
 | `--drop-noise` | off | Leave NOISE calls out of the classified label files |
+| `--write-back [none\|beside\|overwrite]` | `none` | Also save classified labels next to each detected-label file (`<name>_classified.txt`) or overwrite it |
 
 ```bash
 squeak-peek-cli classify-calls model_run/run/model results/ \

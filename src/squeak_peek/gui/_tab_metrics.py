@@ -84,25 +84,50 @@ class MetricsTab(QWidget):
     def _apply_theme(self) -> None:
         self._f1.setStyleSheet(f"color: {t.TEXT_PRIMARY}; font-weight: 600; font-size: {t.TEXT_LG}px;")
 
+    def showEvent(self, event) -> None:
+        """Score the currently loaded labels every time the tab is opened, so
+        the numbers always belong to what Data Input and Label Edit hold now."""
+        super().showEvent(event)
+        self._refresh()
+
     def _on_labels_changed(self) -> None:
+        # Rescore only while this tab is the visible one: a QTabWidget hides
+        # the others, so Label Edit's per-keystroke edits never pay for it.
+        if self.isVisible():
+            self._refresh()
+        else:
+            self._set_counts()
+
+    def _set_counts(self) -> None:
         self._det_count.setText(str(len(self._state.detected_labels)))
         self._ref_count.setText(str(len(self._state.reference_labels)))
 
-    def _compute(self) -> None:
-        det = self._state.detected_labels
-        ref = self._state.reference_labels
-        if not ref:
-            QMessageBox.warning(
-                self, "No reference labels",
-                "Load reference labels in the Data Input tab first."
-            )
-            return
+    def _refresh(self) -> None:
+        """Recompute, or blank the metrics when there is nothing to compare."""
+        self._set_counts()
+        if self._state.reference_labels:
+            self._show_stats(compare_labels(self._state.detected_labels,
+                                            self._state.reference_labels))
+        else:
+            self._clear_stats()
 
-        stats = compare_labels(det, ref)
-
+    def _show_stats(self, stats) -> None:
         self._tp.setText(str(stats.true_positives))
         self._fp.setText(str(stats.false_positives))
         self._fn.setText(str(stats.false_negatives))
         self._prec.setText(f"{stats.precision:.3f}")
         self._rec.setText(f"{stats.recall:.3f}")
         self._f1.setText(f"{stats.f1_score:.3f}")
+
+    def _clear_stats(self) -> None:
+        for label in (self._tp, self._fp, self._fn, self._prec, self._rec, self._f1):
+            label.setText("\u2014")
+
+    def _compute(self) -> None:
+        if not self._state.reference_labels:
+            QMessageBox.warning(
+                self, "No reference labels",
+                "Load reference labels in the Data Input tab first."
+            )
+            return
+        self._refresh()

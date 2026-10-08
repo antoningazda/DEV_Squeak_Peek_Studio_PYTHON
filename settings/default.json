@@ -19,7 +19,7 @@
     "SpectrogramColormap": "invgray",
     "ShowReferenceLabels": true,
     "ShowLabels": true,
-    "ReferenceLabelColor": "white",
+    "ReferenceLabelColor": "magenta",
     "LabelColor": "cyan",
     "ManualLabelLength": 0.075,
     "SonificationST": -35,

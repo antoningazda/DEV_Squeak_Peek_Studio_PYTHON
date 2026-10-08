@@ -69,8 +69,9 @@ You can remove selected rows or clear the list.
 | Option | Default | Effect |
 |---|---|---|
 | **Output folder** | New folder next to the first WAV | Results go here. **It must not exist yet** — results are never overwritten |
-| **Leave NOISE calls out of the classified labels** | off | Drop rejected calls from the exported label files. `predictions.csv` always keeps every call either way |
-| **Label UNCERTAIN calls with the best guess** | off | Write e.g. `5t?` instead of the plain word `UNCERTAIN` |
+| **Save labels** | Results folder only | Also write the classified labels **beside** each recording's detected-label file (`<label file>_classified.txt`), or **overwrite** that file. Recordings added with **Add loaded** have no label file and get `<WAV>_classified.txt` next to the WAV. You are asked before any existing file is replaced |
+| **Leave NOISE calls out of the classified labels** | off | Drop rejected calls from the main exported label file. Off, you get both files — the full record and a `_no_noise` copy. `predictions.csv` always keeps every call either way |
+| **Label UNCERTAIN calls with the best guess** | on | Write e.g. `5t?` instead of the plain word `UNCERTAIN` |
 | **Show results on the loaded recording** | on | Replace the loaded recording's detected labels with the classified ones, so the predicted types are selectable in [Label Edit](label-edit.md) |
 
 ### 4. Run and read the results
@@ -91,6 +92,13 @@ The output folder contains:
 | `expert_review_queue.csv` | The uncertain calls plus an audit sample — your review worklist |
 | `calls_features.csv` | The extracted acoustic features |
 | `labels/<recording>_classified.txt` | A label file per recording, ready to load anywhere in the app |
+| `labels/<recording>_classified_no_noise.txt` | The same labels with the calls rejected as `NOISE` removed — the set to carry into analysis. Not written when **Leave NOISE calls out** is ticked, since the file above is already that |
+
+Classified label files carry a review state per call: a call type is
+written as classification **accepted** (`5t_xC`), while `NOISE`,
+`UNCERTAIN` and best guesses like `5t?` are classification **rejected**
+(`c5?_xc`), so they show up in [Label Edit](label-edit.md)'s rejected
+counter and its override field is ready for the correct type.
 
 **Open results folder** opens it in your file browser.
 

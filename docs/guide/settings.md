@@ -66,7 +66,7 @@ Defaults loaded at startup, so you do not re-pick the same paths every day.
 | Min / Max display frequency | `SpectrogramMinFrequency` / `Max` | `40` / `120` kHz | **Display only — does not affect detection** |
 | Colormap | `SpectrogramColormap` | `invgray` | 15 options |
 | Show detected / reference labels | `ShowLabels` / `ShowReferenceLabels` | `true` | Default overlay state |
-| Label / reference label colour | `LabelColor` / `ReferenceLabelColor` | `cyan` / `white` | |
+| Label / reference label colour | `LabelColor` / `ReferenceLabelColor` | `cyan` / `magenta` | |
 | Manual label length | `ManualLabelLength` | `0.075` s | Duration of a right-click-created label |
 | Manual label text | `ManualLabelMarker` | `md` | Call type written into a right-click-created label |
 | Sonification semitones | `SonificationST` | `-35` | More negative shifts further down. −36 is exactly three octaves |

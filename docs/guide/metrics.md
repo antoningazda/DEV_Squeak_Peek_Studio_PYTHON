@@ -17,7 +17,10 @@ think you are scoring.
 
 ## Detection metrics
 
-Click **Compute metrics**.
+Scored automatically whenever you open the tab, against whatever is loaded
+at that moment — so the numbers always reflect the current detected and
+reference labels, including edits made in [Label Edit](label-edit.md). While
+the tab is open they update live. **Compute metrics** forces a rescore.
 
 | Metric | Definition |
 |---|---|
