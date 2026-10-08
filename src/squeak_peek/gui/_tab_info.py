@@ -19,7 +19,10 @@ from . import _theme as t
 
 # URLs for the buttons
 GITHUB_REPO_URL = "https://github.com/antoningazda/Squeak-Peek-Studio"
-DOCUMENTATION_URL = "https://github.com/antoningazda/Squeak-Peek-Studio/blob/main/Documentation.pdf"
+# The documentation site is built from docs/ in the Python repo and published
+# to the public releases repo's GitHub Pages (.github/workflows/docs.yml), so
+# it sits next to the installers users download.
+DOCUMENTATION_URL = "https://antoningazda.github.io/squeak-peek-studio-releases/"
 THESIS_URL = "https://dspace.cvut.cz/entities/publication/dede5152-081b-41cf-a4ba-55dacad884d5"
 AUTHOR_EMAIL = "antonin.gazda@gmail.com"
 
