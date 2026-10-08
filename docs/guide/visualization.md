@@ -91,7 +91,7 @@ and apply to this tab:
 | **Window** | `1024` | FFT window length in samples. Longer = finer frequency detail, coarser timing |
 | **Overlap** | `512` | Samples of overlap between windows. Higher = smoother image, slower |
 | **Min / Max frequency** | `40` / `120` kHz | The displayed band |
-| **Colormap** | `parula` | 15 options: parula, turbo, hsv, hot, cool, spring, summer, autumn, winter, gray, bone, copper, pink, jet, invgray |
+| **Colormap** | `invgray` | 15 options: parula, turbo, hsv, hot, cool, spring, summer, autumn, winter, gray, bone, copper, pink, jet, invgray |
 
 !!! warning "Window length is a real trade-off"
 

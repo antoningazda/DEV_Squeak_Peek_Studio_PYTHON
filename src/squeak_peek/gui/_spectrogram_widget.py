@@ -16,15 +16,17 @@ Three public additions to the SpectrogramWidget API:
      movable start/end lines (enable_boundary_drag() draws them, disable_boundary_drag()
      removes them).
    - spectrogram_right_clicked(float): emits time value on right-click in either plot.
+
+Mouse drag/wheel pans and zooms the time axis only; the widget re-renders the
+newly visible range itself and emits view_range_changed(t_start, t_end).
 """
 
 from __future__ import annotations
 
 import numpy as np
 import pyqtgraph as pg
-from PyQt6.QtCore import QRectF, Qt, pyqtSignal
+from PyQt6.QtCore import QRectF, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
-from scipy.ndimage import median_filter
 
 from squeak_peek.audio.colormaps import get_colormap_lut, get_named_color_rgba
 from squeak_peek.audio.filters import band_restrict, compute_stft
@@ -42,6 +44,22 @@ _GRAY_CM = pg.ColorMap(
 # colors and both light/dark theme palettes, drawn on top of the spectrogram.
 _PITCH_WIDTH = 3.0
 _PEN_PITCH = pg.mkPen("#FFA500", width=_PITCH_WIDTH)
+# Pitch-trace tracking (see _draw_pitch_trace): a frame is a call frame when
+# its peak bin stands this far above the background; shorter runs are noise.
+_PITCH_PROMINENCE_DB = 12.0
+_PITCH_MIN_RUN = 3
+# Viterbi transition cost per kHz of frequency change between frames, and
+# the largest change allowed in one frame (fast FM sweeps stay under this).
+_PITCH_JUMP_PENALTY_DB_PER_KHZ = 2.0
+_PITCH_MAX_JUMP_KHZ = 6.0
+
+# Mouse pan/zoom: re-render at most this often during a drag, and render this
+# fraction of the visible span beyond each edge so panning reveals real data
+# before the next re-render lands.
+_VIEW_RENDER_INTERVAL_MS = 40
+_RENDER_MARGIN = 0.5
+_LEFT_AXIS_WIDTH = 60
+_MAX_VIEW_SPAN_S = 60.0  # matches the Visualization tab's max segment length
 
 # Detected/reference label lines and boxes: twice as thick as the pitch trace.
 _LABEL_WIDTH = _PITCH_WIDTH * 2
@@ -50,6 +68,24 @@ _LABEL_WIDTH = _PITCH_WIDTH * 2
 # (shared, non-GUI) so the headless video-export spectrogram-panel renderer can
 # reuse them without depending on PyQt/pyqtgraph.
 _get_color_for_name = get_named_color_rgba
+
+
+def _viterbi_path(emission: np.ndarray, transition: np.ndarray) -> np.ndarray:
+    """Best bin index per frame for emission scores (F, T) under a
+    transition score matrix (F, F) indexed [to, from]."""
+    n_bins, n_frames = emission.shape
+    rows = np.arange(n_bins)
+    score = emission[:, 0].copy()
+    back = np.zeros((n_bins, n_frames), dtype=np.int32)
+    for t in range(1, n_frames):
+        cand = transition + score[None, :]
+        back[:, t] = np.argmax(cand, axis=1)
+        score = cand[rows, back[:, t]] + emission[:, t]
+    path = np.empty(n_frames, dtype=np.int32)
+    path[-1] = int(np.argmax(score))
+    for t in range(n_frames - 1, 0, -1):
+        path[t - 1] = back[path[t], t]
+    return path
 
 
 def _build_colormap(name: str) -> pg.ColorMap:
@@ -73,6 +109,7 @@ class SpectrogramWidget(QWidget):
     # Signals for interactive features
     boundary_dragged = pyqtSignal(str, float)  # ("start" or "end", new_time)
     spectrogram_right_clicked = pyqtSignal(float)  # time value
+    view_range_changed = pyqtSignal(float, float)  # (t_start, t_end) after mouse pan/zoom
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -97,8 +134,12 @@ class SpectrogramWidget(QWidget):
         self._img.setColorMap(_GRAY_CM)
         self._spec_plot.addItem(self._img)
 
-        # Share x-axis so both plots pan/zoom together
+        # Share x-axis so both plots pan/zoom together. The link maps by
+        # pixels, so both left axes need the same width or a pan offsets
+        # the waveform against the spectrogram.
         self._spec_plot.setXLink(self._wave_plot)
+        for plot in (self._wave_plot, self._spec_plot):
+            plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
 
         # Height ratio 1:4  (waveform is narrow, spectrogram is tall)
         self._glw.ci.layout.setRowStretchFactor(0, 1)
@@ -108,8 +149,21 @@ class SpectrogramWidget(QWidget):
 
         # Boundary drag lines (for label edit mode)
         self._boundary_lines: dict[str, pg.InfiniteLine] = {}  # "start" → line, "end" → line
-        self._current_colormap_name: str = "parula"
-        self._current_colormap: pg.ColorMap = _build_colormap("parula")
+        self._current_colormap_name: str = "invgray"
+        self._current_colormap: pg.ColorMap = _build_colormap("invgray")
+
+        # Mouse pan/zoom re-renders the visible range (see _on_view_x_changed).
+        for plot in (self._wave_plot, self._spec_plot):
+            plot.setMouseEnabled(x=True, y=False)
+        self._render_args: dict | None = None
+        self._rendered_range: tuple[float, float] = (0.0, 0.0)
+        self._view_range: tuple[float, float] = (0.0, 0.0)
+        self._rendering = False
+        self._pending_view_render = QTimer(self)
+        self._pending_view_render.setSingleShot(True)
+        self._pending_view_render.setInterval(_VIEW_RENDER_INTERVAL_MS)
+        self._pending_view_render.timeout.connect(self._render_current_view)
+        self._wave_plot.getViewBox().sigXRangeChanged.connect(self._on_view_x_changed)
 
         # Connect mouse click handlers for right-click label creation
         self._spec_plot.scene().sigMouseClicked.connect(self._on_plot_mouse_click)
@@ -181,11 +235,58 @@ class SpectrogramWidget(QWidget):
                 col_ref = (int(rgba[0]*255), int(rgba[1]*255), int(rgba[2]*255), int(rgba[3]*255))
                 pen_ref = pg.mkPen(col_ref, width=_LABEL_WIDTH, style=Qt.PenStyle.DashLine)
 
-        i0 = max(0, int(t_start * fs))
-        i1 = min(len(samples), int(t_end * fs))
+        # Remembered so a mouse pan/zoom can re-render the newly visible range.
+        self._render_args = dict(
+            samples=samples, fs=fs, fmin_hz=fmin_hz, fmax_hz=fmax_hz,
+            nperseg=nperseg, noverlap=noverlap,
+            detected_labels=detected_labels if show_detected else None,
+            reference_labels=reference_labels if show_reference else None,
+            show_pitch=show_pitch,
+            pen_det=pen_det, col_det=col_det, pen_ref=pen_ref, col_ref=col_ref,
+        )
+        self._pending_view_render.stop()
+
+        # Mouse pan/zoom: time axis only, clamped to the recording.
+        duration = len(samples) / fs
+        min_span = min(duration, max(4 * nperseg / fs, 0.005))
+        for plot in (self._wave_plot, self._spec_plot):
+            plot.setLimits(xMin=0.0, xMax=duration, minXRange=min_span, maxXRange=min(duration, _MAX_VIEW_SPAN_S))
+
+        self._view_range = (t_start, t_end)
+        self._rendering = True
+        try:
+            self._spec_plot.setRange(
+                xRange=[t_start, t_end],
+                yRange=[fmin_hz / 1_000.0, fmax_hz / 1_000.0],
+                padding=0.0,
+            )
+            self._wave_plot.setRange(xRange=[t_start, t_end], padding=0.0)
+        finally:
+            self._rendering = False
+        self._render(t_start, t_end)
+
+    def _render(self, t_start: float, t_end: float) -> None:
+        """Draw spectrogram, waveform and overlays for [t_start, t_end] plus a
+        margin on each side, so panning shows real data immediately while the
+        throttled re-render catches up. Does not touch the view range."""
+        a = self._render_args
+        if a is None:
+            return
+        samples, fs = a["samples"], a["fs"]
+        fmin_hz, fmax_hz = a["fmin_hz"], a["fmax_hz"]
+        nperseg, noverlap = a["nperseg"], a["noverlap"]
+
+        margin = (t_end - t_start) * _RENDER_MARGIN
+        r_start = max(0.0, t_start - margin)
+        r_end = min(len(samples) / fs, t_end + margin)
+        self._rendered_range = (r_start, r_end)
+
+        i0 = max(0, int(r_start * fs))
+        i1 = min(len(samples), int(r_end * fs))
         chunk = samples[i0:i1]
         if len(chunk) < nperseg:
             return
+        r_start = i0 / fs
 
         # ── Spectrogram ───────────────────────────────────────────────────
         noverlap = min(noverlap, nperseg - 1)
@@ -193,7 +294,7 @@ class SpectrogramWidget(QWidget):
         f, t_rel, Sxx_db = compute_stft(chunk, fs, nperseg, overlap_factor)
         f_sub, Sxx_sub = band_restrict(f, Sxx_db, fmin_hz, fmax_hz)
         f_khz = f_sub / 1_000.0
-        t_abs = t_rel + t_start  # absolute time axis
+        t_abs = t_rel + r_start  # absolute time axis
 
         # ImageItem column-major: shape (T, F)
         img_data = Sxx_sub.T.astype(np.float32)
@@ -210,33 +311,48 @@ class SpectrogramWidget(QWidget):
                 float(f_khz[-1] - f_khz[0]),
             )
         )
-        self._spec_plot.setRange(
-            xRange=[t_start, t_end],
-            yRange=[fmin_hz / 1_000.0, fmax_hz / 1_000.0],
-            padding=0.0,
-        )
 
         # ── Waveform ──────────────────────────────────────────────────────
         n = len(chunk)
-        t_wave = np.linspace(t_start, t_start + n / fs, n, endpoint=False)
+        t_wave = np.linspace(r_start, r_start + n / fs, n, endpoint=False)
         step = max(1, n // 50_000)
         self._wave_curve.setData(t_wave[::step], chunk[::step])
-        self._wave_plot.setRange(xRange=[t_start, t_end], padding=0.0)
 
         # ── Label overlays ────────────────────────────────────────────────
         self._clear_labels()
         fmax_khz = fmax_hz / 1_000.0
         fmin_khz = fmin_hz / 1_000.0
 
-        if show_detected and detected_labels:
-            self._draw_labels(detected_labels, t_start, t_end, pen_det, col_det, fmin_khz, fmax_khz)
-        if show_reference and reference_labels:
-            self._draw_labels(reference_labels, t_start, t_end, pen_ref, col_ref, fmin_khz, fmax_khz)
+        if a["detected_labels"]:
+            self._draw_labels(a["detected_labels"], r_start, r_end, a["pen_det"], a["col_det"], fmin_khz, fmax_khz)
+        if a["reference_labels"]:
+            self._draw_labels(a["reference_labels"], r_start, r_end, a["pen_ref"], a["col_ref"], fmin_khz, fmax_khz)
 
-        if show_pitch:
+        if a["show_pitch"]:
             self._draw_pitch_trace(f_khz, Sxx_sub, t_abs)
 
+    def _on_view_x_changed(self, _vb: object, x_range: tuple) -> None:
+        """User pan/zoom moved the time axis: schedule a re-render (throttled,
+        so a continuous drag redraws at a steady rate instead of per event)."""
+        if self._rendering or self._render_args is None:
+            return
+        if not self._pending_view_render.isActive():
+            self._pending_view_render.start()
+
+    def _render_current_view(self) -> None:
+        t0, t1 = self._wave_plot.getViewBox().viewRange()[0]
+        # Layout/resize can re-emit the range display() just set; only a
+        # real change of view needs a re-render.
+        tol = (t1 - t0) * 1e-6
+        if abs(t0 - self._view_range[0]) <= tol and abs(t1 - self._view_range[1]) <= tol:
+            return
+        self._view_range = (t0, t1)
+        self._render(t0, t1)
+        self.view_range_changed.emit(t0, t1)
+
     def clear(self) -> None:
+        self._render_args = None
+        self._pending_view_render.stop()
         self._img.clear()
         self._wave_curve.setData([], [])
         self._clear_labels()
@@ -244,7 +360,7 @@ class SpectrogramWidget(QWidget):
     def set_colormap(self, name: str) -> None:
         """Set the spectrogram colormap by name.
 
-        Supported names: parula (default), turbo, hsv, hot, cool, spring, summer,
+        Supported names: invgray (default), parula, turbo, hsv, hot, cool, spring, summer,
         autumn, winter, gray, bone, copper, pink, jet, invgray.
 
         The colormap persists across display() calls until changed again.
@@ -373,51 +489,41 @@ class SpectrogramWidget(QWidget):
         Sxx_sub: np.ndarray,
         t_abs: np.ndarray,
     ) -> None:
-        """Overlay the dominant-frequency contour wherever a call is
-        actually playing in the visible segment.
+        """Overlay a pitch contour wherever a call is actually playing.
 
-        Traces the peak-power frequency bin per STFT column (the same
-        "DomFreq" measure used for ML features), gated by each frame's
-        power relative to this segment's own noise floor — independent of
-        any detected/reference label, so an untagged call still gets a
-        trace. Frames that don't clear the gate (background noise, where
-        argmax picks an arbitrary — often very high — frequency bin) are
-        dropped rather than traced, and each surviving contiguous run of
-        frames is drawn as its own line so separate calls, or a call's
-        onset after a quiet lead-in, aren't bridged by a line through
-        silence.
+        Independent of any detected/reference label, so an untagged call
+        still gets a trace. Each STFT bin is first referenced to its own
+        median over the rendered range (removing stationary noise lines)
+        and each frame to its own median across frequency; a frame counts
+        as a call when its strongest bin stands _PITCH_PROMINENCE_DB above
+        that. Within each contiguous run of call frames the contour is a
+        Viterbi path that trades bin power against frequency jumps: these
+        calls often show several parallel bands of similar power, and a
+        plain per-frame argmax hops between them, drawing vertical zigzags.
         """
-        if Sxx_sub.shape[1] < 4:
+        # Ignore bins above 100 kHz: stray high-frequency noise above the
+        # typical USV range otherwise wins and makes the trace jump wildly.
+        band = f_khz < 100.0
+        if Sxx_sub.shape[1] < _PITCH_MIN_RUN or np.count_nonzero(band) < 2:
             return
-
-        # Ignore bins above 100 kHz when picking the dominant frequency:
-        # stray high-frequency noise above the typical USV range otherwise
-        # wins the argmax and causes the trace to jump wildly.
-        Sxx_masked = np.where((f_khz < 100.0)[:, None], Sxx_sub, -np.inf)
-        if not np.any(f_khz < 100.0):
-            return
-
-        peak_idx = np.argmax(Sxx_masked, axis=0)
-        pitch_khz = f_khz[peak_idx]
-        peak_power = Sxx_sub[peak_idx, np.arange(Sxx_sub.shape[1])]
-
-        noise_floor = np.percentile(peak_power, 20)
-        ceiling = np.percentile(peak_power, 95)
-        threshold = noise_floor + 0.5 * (ceiling - noise_floor)
-        is_signal = peak_power >= threshold
+        f_band = f_khz[band]
+        power = Sxx_sub[band]
+        power = power - np.median(power, axis=1, keepdims=True)
+        power = power - np.median(power, axis=0, keepdims=True)
+        is_signal = power.max(axis=0) >= _PITCH_PROMINENCE_DB
 
         run_starts = np.where(is_signal & ~np.concatenate(([False], is_signal[:-1])))[0]
         run_ends = np.where(is_signal & ~np.concatenate((is_signal[1:], [False])))[0]
 
-        for start, end in zip(run_starts, run_ends):
-            trace_t = t_abs[start : end + 1]
-            trace_f = pitch_khz[start : end + 1]
-            if len(trace_f) < 2:
-                continue
-            if len(trace_f) >= 3:
-                trace_f = median_filter(trace_f, size=3, mode="nearest")
+        df_khz = float(f_band[1] - f_band[0])
+        jump = np.abs(np.subtract.outer(np.arange(len(f_band)), np.arange(len(f_band)))) * df_khz
+        transition = np.where(jump <= _PITCH_MAX_JUMP_KHZ, -_PITCH_JUMP_PENALTY_DB_PER_KHZ * jump, -np.inf)
 
-            curve = pg.PlotDataItem(trace_t, trace_f, pen=_PEN_PITCH)
+        for start, end in zip(run_starts, run_ends):
+            if end - start + 1 < _PITCH_MIN_RUN:
+                continue
+            path = _viterbi_path(power[:, start : end + 1], transition)
+            curve = pg.PlotDataItem(t_abs[start : end + 1], f_band[path], pen=_PEN_PITCH)
             self._spec_plot.addItem(curve)
             self._label_items.append((self._spec_plot, curve))
 

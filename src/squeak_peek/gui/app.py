@@ -510,7 +510,42 @@ def _autoload_defaults(state: AppState, data_input_tab: DataInputTab) -> None:
         logger.warning(f"Startup auto-load failed (non-fatal): {e}")
 
 
+def _set_macos_process_name(name: str) -> None:
+    """Show `name` instead of "python3.x" in the macOS menu bar when run
+    from source (the packaged .app gets it from its Info.plist).
+
+    The menu bar reads CFBundleName from the main bundle's info dictionary,
+    so patch it via the Objective-C runtime before QApplication starts Cocoa.
+    """
+    import ctypes
+
+    objc = ctypes.cdll.LoadLibrary("/usr/lib/libobjc.dylib")
+    ctypes.cdll.LoadLibrary("/System/Library/Frameworks/Foundation.framework/Foundation")
+    objc.objc_getClass.restype = ctypes.c_void_p
+    objc.sel_registerName.restype = ctypes.c_void_p
+
+    def send(obj, sel, *args):
+        msg = objc.objc_msgSend
+        msg.restype = ctypes.c_void_p
+        msg.argtypes = [ctypes.c_void_p, ctypes.c_void_p] + [ctypes.c_void_p] * len(args)
+        return msg(obj, objc.sel_registerName(sel), *args)
+
+    def nsstring(text: str):
+        cls = objc.objc_getClass(b"NSString")
+        return send(cls, b"stringWithUTF8String:", ctypes.c_char_p(text.encode()))
+
+    bundle = send(objc.objc_getClass(b"NSBundle"), b"mainBundle")
+    info = send(bundle, b"infoDictionary")
+    if info:
+        send(info, b"setObject:forKey:", nsstring(name), nsstring("CFBundleName"))
+
+
 def main() -> None:
+    if sys.platform == "darwin" and not getattr(sys, "frozen", False):
+        try:
+            _set_macos_process_name("Squeak Peek Studio")
+        except Exception:  # noqa: BLE001
+            pass
     if sys.platform == "win32":
         # Without an explicit AppUserModelID, Windows groups the window under
         # python.exe in the taskbar and shows Python's icon instead of ours.

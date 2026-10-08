@@ -136,12 +136,23 @@ class VisualizationTab(QWidget):
 
         # Connect right-click on spectrogram to manual label creation
         self._spec.spectrogram_right_clicked.connect(self._on_spectrogram_right_clicked)
+        self._spec.view_range_changed.connect(self._on_view_range_changed)
 
     # ── Slots ─────────────────────────────────────────────────────────────
 
     def _on_start_changed(self, value: float) -> None:
         self._state.segment_start = value
         self._state.segment_changed.emit()
+
+    def _on_view_range_changed(self, t0: float, t1: float) -> None:
+        """Mouse pan/zoom on the plot: the widget already re-rendered, so just
+        adopt the new range as the current segment and sync the spinboxes."""
+        self._state.segment_start = max(0.0, t0)
+        self._state.settings.visualization.segment_length_seconds = t1 - t0
+        for spin, value in ((self._start_spin, t0), (self._len_spin, t1 - t0)):
+            spin.blockSignals(True)
+            spin.setValue(value)
+            spin.blockSignals(False)
 
     def _on_length_changed(self, value: float) -> None:
         self._state.settings.visualization.segment_length_seconds = value

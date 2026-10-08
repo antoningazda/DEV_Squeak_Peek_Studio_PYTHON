@@ -56,7 +56,7 @@ Defaults loaded at startup, so you do not re-pick the same paths every day.
 | Spectrogram window | `SpectrogramWindow` | `1024` | Larger windows sharpen frequency, blur time |
 | Spectrogram overlap | `SpectrogramOverlap` | `512` | Must be smaller than the window. Higher = smoother, slower |
 | Min / Max display frequency | `SpectrogramMinFrequency` / `Max` | `40` / `120` kHz | **Display only — does not affect detection** |
-| Colormap | `SpectrogramColormap` | `parula` | 15 options |
+| Colormap | `SpectrogramColormap` | `invgray` | 15 options |
 | Show detected / reference labels | `ShowLabels` / `ShowReferenceLabels` | `true` | Default overlay state |
 | Label / reference label colour | `LabelColor` / `ReferenceLabelColor` | `cyan` / `white` | |
 | Manual label length | `ManualLabelLength` | `0.075` s | Duration of a right-click-created label |

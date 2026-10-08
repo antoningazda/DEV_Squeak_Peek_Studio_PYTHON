@@ -95,7 +95,7 @@ project. A source checkout ships `settings/default.json`.
   },
   "Visualization": {
     "SpectrogramWindow": 1024,
-    "SpectrogramColormap": "parula"
+    "SpectrogramColormap": "invgray"
   }
 }
 ```

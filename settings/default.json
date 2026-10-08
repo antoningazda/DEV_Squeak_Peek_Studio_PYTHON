@@ -16,7 +16,7 @@
     "SpectrogramOverlap": 512,
     "SpectrogramMinFrequency": 40,
     "SpectrogramMaxFrequency": 120,
-    "SpectrogramColormap": "parula",
+    "SpectrogramColormap": "invgray",
     "ShowReferenceLabels": true,
     "ShowLabels": true,
     "ReferenceLabelColor": "white",
