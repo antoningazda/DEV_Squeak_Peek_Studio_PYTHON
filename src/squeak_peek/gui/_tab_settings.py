@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 import squeak_peek.classifiers  # noqa: F401  (registers built-in classifiers)
 import squeak_peek.detectors  # noqa: F401  (registers built-in detectors)
+from squeak_peek.audio.colormaps import COLORMAP_NAMES
 from squeak_peek.classifiers.base import AbstractClassifier
 from squeak_peek.config import AppSettings
 from squeak_peek.detectors.base import AbstractDetector
@@ -265,8 +266,7 @@ class SettingsTab(QWidget):
         )
 
         self._viz_colormap = QComboBox()
-        colormaps = ["parula", "turbo", "hsv", "hot", "cool", "spring", "summer", "autumn", "winter", "gray", "bone", "copper", "pink", "jet", "invgray"]
-        self._viz_colormap.addItems(colormaps)
+        self._viz_colormap.addItems(COLORMAP_NAMES)
         idx = self._viz_colormap.findText(vis.colormap)
         if idx >= 0:
             self._viz_colormap.setCurrentIndex(idx)
@@ -558,8 +558,7 @@ class SettingsTab(QWidget):
         self._range_indicator(form, self._le_fmin, self._le_fmax)
 
         self._le_colormap = QComboBox()
-        colormaps = ["parula", "turbo", "hsv", "hot", "cool", "spring", "summer", "autumn", "winter", "gray", "bone", "copper", "pink", "jet", "invgray"]
-        self._le_colormap.addItems(colormaps)
+        self._le_colormap.addItems(COLORMAP_NAMES)
         idx = self._le_colormap.findText(label_edit.colormap)
         if idx >= 0:
             self._le_colormap.setCurrentIndex(idx)

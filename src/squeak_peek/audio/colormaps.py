@@ -168,6 +168,12 @@ def get_named_color_rgba(color_name: str | None) -> tuple[float, float, float, f
     return _NAMED_COLORS.get(color_name.lower())
 
 
+COLORMAP_NAMES: tuple[str, ...] = (
+    "parula", "turbo", "hsv", "hot", "cool", "spring", "summer",
+    "autumn", "winter", "gray", "bone", "copper", "pink", "jet", "invgray",
+)
+
+
 def get_colormap_lut(name: str) -> np.ndarray:
     """Return a (256, 3) uint8 RGB lookup table for a MATLAB/matplotlib-
     compatible colormap name.

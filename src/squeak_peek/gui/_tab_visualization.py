@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -226,10 +227,11 @@ class VisualizationTab(QWidget):
                 self._playback_timer.timeout.connect(self._on_playback_tick)
             self._playback_timer.start(30)
 
-        except Exception:
+        except Exception as exc:
             import traceback
             traceback.print_exc()
             self._sonify_btn.setEnabled(True)
+            QMessageBox.warning(self, "Sonification failed", str(exc))
 
     def _on_playback_tick(self) -> None:
         """Update moving cursor line during playback."""

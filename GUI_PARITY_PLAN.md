@@ -1,5 +1,15 @@
 # MATLAB → Python GUI/UX Parity Plan
 
+> **Status (2026-10-08): all done.** WP19–WP26, WP28 and WP29 have all
+> landed on `main` (see `git log` for `Implement WP19/20/21/22/24/25/26`,
+> `Add InfoTab links...`). WP27 was resolved as option (a) below — see
+> `46d7317 Drop MATLAB's raw-RGB theme model (WP27, resolved: option 1)` —
+> the new design-token System/Light/Dark system is the replacement, not a
+> gap; MATLAB's raw-RGB Light/Gray/Custom picker was deliberately not
+> ported. The gap inventory and WP descriptions below are kept as
+> historical implementation notes (MATLAB line references, algorithm
+> detail) — don't read the table as current status.
+
 `PORT_PLAN.md` covered the numerical core (detectors, features, labels, ML) —
 that's done. This is a second deep-dive: a feature-by-feature comparison of
 the **MATLAB App Designer UI** (`../DEV_Squeak-Peek-Studio/SqueakPeekStudio_exported.m`,

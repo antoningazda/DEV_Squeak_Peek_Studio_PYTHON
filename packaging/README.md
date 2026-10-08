@@ -4,22 +4,29 @@ A desktop app for visualizing, detecting, and labeling ultrasonic
 vocalizations (USVs) of laboratory rats — a Python rewrite of the original
 MATLAB thesis application.
 
+📖 **[Full documentation](https://antoningazda.github.io/squeak-peek-studio-releases/)**
+
 ## What it does
 
-- Load ultrasonic (250 kHz) audio recordings and view them as spectrograms
-- Automatically detect USV calls (PSD, BSCD, or RBD algorithms)
-- Manually review, classify, and export call labels
+- Load ultrasonic (250 kHz) audio recordings and view them as spectrograms,
+  single-file or batch (whole folder)
+- Automatically detect USV calls (PSD, BSCD, RBD, a trainable Random Forest
+  detector, or a trainable CNN object detector), optionally running several
+  detectors/post-processing steps in one pass
+- Classify call types with a two-stage CNN + Random Forest model (also
+  trainable from your own labeled recordings)
+- Manually review, drag-resize, and label-edit calls, with keyboard shortcuts
+  and independent accept/reject state for detection vs. classification
+- Sonify segments (pitch-shift/time-stretch) for audible playback of
+  ultrasonic calls, with video import/sync
 - Compare detected calls against reference annotations (precision/recall/F1)
+- Export labeled/annotated video clips
 
 ## Status
 
-Early release. Core detection and labeling are working; ML-based detection
-is not yet available.
-
-- ✅ Signal detection (PSD, BSCD, RBD)
-- ✅ Spectrogram visualization and label editing
-- ✅ Detection accuracy metrics
-- ⏳ ML-based detector — coming in a future release
+Actively developed. Full feature set, documentation and release notes are
+kept at the documentation site linked above — this file only covers
+installing and opening the downloaded build.
 
 ## Installing
 

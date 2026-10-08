@@ -1,5 +1,9 @@
 # MATLAB → Python Port Plan (Phases 2–6)
 
+> **Status: all tiers complete and merged** (see root `README.md`'s Status
+> table). Kept as a historical implementation record — WP ownership/file
+> lists below describe how the port was executed, not open work.
+
 Frozen contracts (already in `main`, do not touch): `squeak_peek.config.*`,
 `squeak_peek.labels.model.Label`, `squeak_peek.audio.io.{load_wav,save_wav}`,
 `squeak_peek.audio.filters.{bandpass_filter,compute_stft,band_restrict}`,

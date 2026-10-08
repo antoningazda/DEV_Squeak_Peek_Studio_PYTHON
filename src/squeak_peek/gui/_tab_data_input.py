@@ -269,6 +269,18 @@ class DataInputTab(QWidget):
         det_path = self._det_edit.text().strip()
         ref_path = self._ref_edit.text().strip()
 
+        if (det_path and self._state.detected_labels) or (ref_path and self._state.reference_labels):
+            reply = QMessageBox.question(
+                self,
+                "Overwrite loaded labels?",
+                "Loading will replace the labels currently in memory "
+                "(including any unexported edits made in Label Edit). Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
         if wav_path:
             progress = None
             if self._state.settings.visualization.show_loading_dialog:
