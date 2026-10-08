@@ -357,10 +357,33 @@ class MainWindow(QMainWindow):
         self._quit_action.triggered.connect(self.close)
         file_menu.addAction(self._quit_action)
 
+        edit_menu = mb.addMenu("&Edit")
+
+        self._undo_action = QAction("&Undo", self)
+        self._undo_action.setShortcut(shortcuts.get_shortcut("undo_label_edit"))
+        self._undo_action.setStatusTip("Undo the last label edit.")
+        self._undo_action.triggered.connect(self._state.undo)
+        edit_menu.addAction(self._undo_action)
+
+        self._redo_action = QAction("&Redo", self)
+        self._redo_action.setShortcut(shortcuts.get_shortcut("redo_label_edit"))
+        self._redo_action.setStatusTip("Redo the last undone label edit.")
+        self._redo_action.triggered.connect(self._state.redo)
+        edit_menu.addAction(self._redo_action)
+
+        self._state.labels_changed.connect(self._refresh_undo_redo_actions)
+        self._refresh_undo_redo_actions()
+
+    def _refresh_undo_redo_actions(self) -> None:
+        self._undo_action.setEnabled(self._state.can_undo)
+        self._redo_action.setEnabled(self._state.can_redo)
+
     def _refresh_menu_shortcuts(self) -> None:
         """Re-read bindings after they're edited in Settings → Shortcuts."""
         self._open_wav_action.setShortcut(shortcuts.get_shortcut("open_wav"))
         self._quit_action.setShortcut(shortcuts.get_shortcut("quit"))
+        self._undo_action.setShortcut(shortcuts.get_shortcut("undo_label_edit"))
+        self._redo_action.setShortcut(shortcuts.get_shortcut("redo_label_edit"))
 
     def _on_wav_loaded(self) -> None:
         p = self._state.wav_path

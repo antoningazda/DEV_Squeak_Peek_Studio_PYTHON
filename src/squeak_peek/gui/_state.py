@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -8,6 +9,11 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from squeak_peek.audio.io import load_wav
 from squeak_peek.config import AppSettings
 from squeak_peek.labels.model import Label
+
+# Cap on how many detected-label snapshots the undo stack keeps. A snapshot
+# is a deep copy of the whole label list, so this bounds memory rather than
+# letting a long Label Edit session grow it unboundedly.
+_MAX_UNDO_DEPTH = 50
 
 
 class AppState(QObject):
@@ -33,6 +39,13 @@ class AppState(QObject):
         self.video_sync_method: str = ""
         self.sonified_track: tuple[np.ndarray, int] | None = None  # (samples, fs)
 
+        # Undo/redo for detected_labels edits (accept/reject, drag-resize,
+        # manual create/delete). Callers that mutate detected_labels call
+        # snapshot_labels() first, which is cheap (a deep copy of a list of
+        # small dataclasses) compared to re-running a detector.
+        self._undo_stack: list[list[Label]] = []
+        self._redo_stack: list[list[Label]] = []
+
     @property
     def duration(self) -> float:
         if self.samples is None:
@@ -57,8 +70,43 @@ class AppState(QObject):
         self.video_sync_offset = 0.0
         self.video_sync_method = ""
         self.sonified_track = None
+        self._undo_stack.clear()
+        self._redo_stack.clear()
         self.wav_loaded.emit()
         self.segment_changed.emit()
+
+    # ── Label edit undo/redo ────────────────────────────────────────────
+
+    def snapshot_labels(self) -> None:
+        """Push the current detected_labels onto the undo stack. Call this
+        right before any in-place edit (accept/reject, drag-resize, manual
+        create/delete) so the edit can be undone."""
+        self._undo_stack.append(copy.deepcopy(self.detected_labels))
+        if len(self._undo_stack) > _MAX_UNDO_DEPTH:
+            del self._undo_stack[0]
+        self._redo_stack.clear()
+
+    @property
+    def can_undo(self) -> bool:
+        return bool(self._undo_stack)
+
+    @property
+    def can_redo(self) -> bool:
+        return bool(self._redo_stack)
+
+    def undo(self) -> None:
+        if not self._undo_stack:
+            return
+        self._redo_stack.append(copy.deepcopy(self.detected_labels))
+        self.detected_labels = self._undo_stack.pop()
+        self.labels_changed.emit()
+
+    def redo(self) -> None:
+        if not self._redo_stack:
+            return
+        self._undo_stack.append(copy.deepcopy(self.detected_labels))
+        self.detected_labels = self._redo_stack.pop()
+        self.labels_changed.emit()
 
     def load_video(self, path: Path | str) -> None:
         """Import a behavior video, sync it to the loaded WAV's timeline,

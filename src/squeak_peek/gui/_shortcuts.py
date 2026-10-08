@@ -71,6 +71,16 @@ SHORTCUTS: list[ShortcutSpec] = [
         "Accept both detection and classification for the current label, then move to the next one.",
         "Space", "Label Edit",
     ),
+    ShortcutSpec(
+        "undo_label_edit", "Undo",
+        "Undo the last label edit (accept/reject, drag-resize, manual create).",
+        "Ctrl+Z", "Label Edit / Visualization",
+    ),
+    ShortcutSpec(
+        "redo_label_edit", "Redo",
+        "Redo the last undone label edit.",
+        "Ctrl+Shift+Z", "Label Edit / Visualization",
+    ),
 ]
 
 _BY_ID = {s.id: s for s in SHORTCUTS}

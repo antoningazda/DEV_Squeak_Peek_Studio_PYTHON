@@ -28,6 +28,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from squeak_peek.audio.denoise import DenoiseParams
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Section: DataInput
 # ═══════════════════════════════════════════════════════════════════════════
@@ -103,6 +105,11 @@ class VisualizationSettings(BaseModel):
     manual_label_length: float = Field(
         alias="ManualLabelLength", default=0.075,
         description="Default duration (s) of a manually-placed label.",
+    )
+    manual_label_marker: str = Field(
+        alias="ManualLabelMarker", default="md",
+        description="Label text given to a manually-created label "
+                    "(right-click on a spectrogram).",
     )
 
     # Sonification
@@ -258,6 +265,7 @@ class DetectionSettings(_PluginParamStore):
     """Mirrors the 'Detection' section of default.json."""
 
     export_path: str = Field(alias="ExportPath", default="")
+    pre: DenoiseParams = Field(alias="PRE", default_factory=DenoiseParams)
     post: PostProcessParams = Field(alias="POST", default_factory=PostProcessParams)
 
     def _plugin_registry(self):

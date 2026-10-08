@@ -29,6 +29,8 @@ class LabelEditTab(QWidget):
         super().__init__(parent)
         self._state = state
         self._idx: int = 0
+        self._override_dirty = False  # True once the current label's
+        # classification-override field has already been snapshotted for undo
         self._setup_ui()
 
         state.wav_loaded.connect(self._on_labels_changed)
@@ -262,6 +264,7 @@ class LabelEditTab(QWidget):
 
         n = len(labels)
         lbl = labels[self._idx]
+        self._override_dirty = False
         self._counter.setText(f"{self._idx + 1} / {n}")
         self._info_label.setText(
             f"[{lbl.start_time:.4f} – {lbl.end_time:.4f} s]  "
@@ -342,6 +345,7 @@ class LabelEditTab(QWidget):
         labels = self._state.detected_labels
         if not labels:
             return
+        self._state.snapshot_labels()
         labels[self._idx] = replace(labels[self._idx], label=text)
         self._state.labels_changed.emit()
 
@@ -350,6 +354,7 @@ class LabelEditTab(QWidget):
         labels = self._state.detected_labels
         if not labels:
             return
+        self._state.snapshot_labels()
         labels[self._idx] = replace(labels[self._idx], detection_state=state)
         self._state.labels_changed.emit()
         self._update_counters()
@@ -359,6 +364,7 @@ class LabelEditTab(QWidget):
         labels = self._state.detected_labels
         if not labels:
             return
+        self._state.snapshot_labels()
         labels[self._idx] = replace(labels[self._idx], classification_state=state)
         self._state.labels_changed.emit()
         self._update_counters()
@@ -377,6 +383,11 @@ class LabelEditTab(QWidget):
         labels = self._state.detected_labels
         if not labels:
             return
+        # Fires per keystroke — only snapshot once per label view so undo
+        # reverts the whole correction, not one character at a time.
+        if not self._override_dirty:
+            self._state.snapshot_labels()
+            self._override_dirty = True
         # Update label text when user types a correction
         labels[self._idx] = replace(labels[self._idx], label=text)
         self._state.labels_changed.emit()
@@ -387,6 +398,7 @@ class LabelEditTab(QWidget):
         if not labels:
             return
 
+        self._state.snapshot_labels()
         if edge == "start":
             labels[self._idx] = replace(labels[self._idx], start_time=new_time)
         elif edge == "end":
@@ -401,12 +413,15 @@ class LabelEditTab(QWidget):
         if labels is None:
             return
 
+        self._state.snapshot_labels()
+
         # Create a new label centered on the clicked time
-        duration = self._state.settings.visualization.manual_label_length
+        vis = self._state.settings.visualization
+        duration = vis.manual_label_length
         new_label = Label(
             start_time=max(0.0, time - duration / 2),
             end_time=min(self._state.duration, time + duration / 2),
-            label="md",  # manual label marker
+            label=vis.manual_label_marker,
             detection_state="Accepted",
             classification_state="None",
         )

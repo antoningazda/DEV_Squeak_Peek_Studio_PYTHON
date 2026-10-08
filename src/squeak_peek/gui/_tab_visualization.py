@@ -306,6 +306,8 @@ class VisualizationTab(QWidget):
             s = self._state
             vis = s.settings.visualization
 
+            s.snapshot_labels()
+
             # Create label centered on clicked time
             label_duration = vis.manual_label_length
             start_time = clicked_time - label_duration / 2
@@ -315,7 +317,7 @@ class VisualizationTab(QWidget):
             new_label = Label(
                 start_time=start_time,
                 end_time=end_time,
-                label="md",
+                label=vis.manual_label_marker,
                 detection_state="Accepted",
             )
 

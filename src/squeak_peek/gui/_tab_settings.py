@@ -308,6 +308,13 @@ class SettingsTab(QWidget):
             "The new label is centered on the click point; drag its edges afterward to adjust it.",
         )
 
+        self._viz_manual_label_marker = QLineEdit()
+        self._viz_manual_label_marker.setText(vis.manual_label_marker)
+        self._field(
+            form, "Manual label text:", self._viz_manual_label_marker,
+            "Label text given to a label you create by right-clicking the spectrogram.",
+        )
+
         self._viz_show_labels = QComboBox()
         self._viz_show_labels.addItem("Show", True)
         self._viz_show_labels.addItem("Hide", False)
@@ -785,6 +792,7 @@ class SettingsTab(QWidget):
         vis.label_color                 = self._viz_label_color.currentText()
         vis.reference_label_color       = self._viz_ref_label_color.currentText()
         vis.manual_label_length         = self._viz_manual_label_len.value()
+        vis.manual_label_marker         = self._viz_manual_label_marker.text().strip() or "md"
         vis.show_labels                 = self._viz_show_labels.currentData()
         vis.show_reference_labels       = self._viz_show_ref_labels.currentData()
         vis.show_loading_dialog         = self._viz_show_loading.currentData()
@@ -901,6 +909,10 @@ class SettingsTab(QWidget):
             if idx >= 0:
                 widget.setCurrentIndex(idx)
             widget.blockSignals(False)
+
+        self._viz_manual_label_marker.blockSignals(True)
+        self._viz_manual_label_marker.setText(vis.manual_label_marker)
+        self._viz_manual_label_marker.blockSignals(False)
 
         self._viz_show_labels.blockSignals(True)
         self._viz_show_labels.setCurrentIndex(0 if vis.show_labels else 1)
