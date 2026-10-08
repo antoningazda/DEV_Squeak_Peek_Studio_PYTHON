@@ -390,7 +390,14 @@ class SpectrogramWidget(QWidget):
         if Sxx_sub.shape[1] < 4:
             return
 
-        peak_idx = np.argmax(Sxx_sub, axis=0)
+        # Ignore bins above 100 kHz when picking the dominant frequency:
+        # stray high-frequency noise above the typical USV range otherwise
+        # wins the argmax and causes the trace to jump wildly.
+        Sxx_masked = np.where((f_khz < 100.0)[:, None], Sxx_sub, -np.inf)
+        if not np.any(f_khz < 100.0):
+            return
+
+        peak_idx = np.argmax(Sxx_masked, axis=0)
         pitch_khz = f_khz[peak_idx]
         peak_power = Sxx_sub[peak_idx, np.arange(Sxx_sub.shape[1])]
 
