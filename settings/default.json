@@ -30,7 +30,7 @@
     "SpectrogramOverlap": 512,
     "SpectrogramMinFrequency": 40,
     "SpectrogramMaxFrequency": 120,
-    "SpectrogramColormap": "hsv",
+    "SpectrogramColormap": "invgray",
     "Classifications": "d,sk,5,5t,5w,c5"
   },
   "Detection": {

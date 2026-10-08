@@ -50,7 +50,7 @@ class AppState(QObject):
     def load_wav(self, path: Path | str) -> None:
         self.samples, self.fs = load_wav(path)
         self.wav_path = Path(path)
-        self.segment_start = 0.0
+        self.segment_start = self.settings.visualization.segment_start_seconds
         # A previously imported video/sync/sonification belonged to the old
         # WAV — stale data here would silently mis-sync the Video tab.
         self.video_path = None

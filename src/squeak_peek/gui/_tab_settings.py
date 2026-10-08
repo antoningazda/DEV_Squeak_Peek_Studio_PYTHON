@@ -69,6 +69,8 @@ class SettingsTab(QWidget):
         sub_tabs += [
             (self._make_label_edit_tab(), "Label Edit",
              "Spectrogram rendering and call-type list for the Label Edit tab."),
+            (self._make_video_tab(), "Video",
+             "Finger-snap sync-click detection used when importing a behavior video."),
             (self._make_appearance_tab(), "Appearance",
              "The app's color scheme."),
             (self._make_shortcuts_tab(), "Shortcuts",
@@ -204,6 +206,17 @@ class SettingsTab(QWidget):
             indicator=False,
         )
         self._range_indicator(form, self._viz_fmin, self._viz_fmax)
+
+        self._viz_seg_start = QDoubleSpinBox()
+        self._viz_seg_start.setRange(0.0, 99_999.0)
+        self._viz_seg_start.setDecimals(3)
+        self._viz_seg_start.setSuffix(" s")
+        self._viz_seg_start.setValue(vis.segment_start_seconds)
+        self._field(
+            form, "Initial segment start:", self._viz_seg_start,
+            "Segment start time jumped to whenever a new WAV file is loaded.",
+            indicator=False,
+        )
 
         self._viz_seg_len = QDoubleSpinBox()
         self._viz_seg_len.setRange(0.01, 60.0)
@@ -414,7 +427,29 @@ class SettingsTab(QWidget):
     def _make_post_tab(self) -> QWidget:
         w = QWidget()
         form = self._new_form(w)
-        post = self._state.settings.detection.post
+        detection = self._state.settings.detection
+        post = detection.post
+
+        export_row = QWidget()
+        export_row_layout = QHBoxLayout(export_row)
+        export_row_layout.setContentsMargins(0, 0, 0, 0)
+        self._det_export_path = QLineEdit()
+        self._det_export_path.setReadOnly(True)
+        self._det_export_path.setText(detection.export_path)
+        self._det_export_path.setPlaceholderText("Same folder as WAV file")
+        export_browse_btn = QPushButton("Browse…")
+        export_browse_btn.clicked.connect(self._browse_det_export_path)
+        export_clear_btn = QPushButton("Clear")
+        export_clear_btn.clicked.connect(lambda: self._det_export_path.setText(""))
+        export_row_layout.addWidget(self._det_export_path)
+        export_row_layout.addWidget(export_browse_btn)
+        export_row_layout.addWidget(export_clear_btn)
+        self._field(
+            form, "Default export folder:", export_row,
+            "Default folder the Detection tab's export folder is set to on startup. "
+            "Leave blank to default to the loaded WAV file's own folder.",
+            indicator=False,
+        )
 
         self._post_gap = QDoubleSpinBox()
         self._post_gap.setRange(0.0, 1.0)
@@ -509,6 +544,49 @@ class SettingsTab(QWidget):
 
         return w
 
+    def _make_video_tab(self) -> QWidget:
+        w = QWidget()
+        form = self._new_form(w)
+        video = self._state.settings.video
+
+        self._video_snap_min = QDoubleSpinBox()
+        self._video_snap_min.setRange(0.0, 250_000.0)
+        self._video_snap_min.setDecimals(0)
+        self._video_snap_min.setSuffix(" Hz")
+        self._video_snap_min.setValue(video.snap_band_min_hz)
+        self._field(
+            form, "Snap band min:", self._video_snap_min,
+            "Lower bound of the band searched for a finger-snap transient in the "
+            "video's own audio track.",
+            "Used to sync a video's timeline when no 'sk' label is available.",
+            indicator=False,
+        )
+
+        self._video_snap_max = QDoubleSpinBox()
+        self._video_snap_max.setRange(0.0, 250_000.0)
+        self._video_snap_max.setDecimals(0)
+        self._video_snap_max.setSuffix(" Hz")
+        self._video_snap_max.setValue(video.snap_band_max_hz)
+        self._field(
+            form, "Snap band max:", self._video_snap_max,
+            "Upper bound of the band searched for a finger-snap transient in the "
+            "video's own audio track.",
+            indicator=False,
+        )
+        self._range_indicator(form, self._video_snap_min, self._video_snap_max)
+
+        self._video_snap_threshold = QDoubleSpinBox()
+        self._video_snap_threshold.setRange(0.1, 100.0)
+        self._video_snap_threshold.setDecimals(1)
+        self._video_snap_threshold.setValue(video.snap_threshold_factor)
+        self._field(
+            form, "Snap threshold factor:", self._video_snap_threshold,
+            "How many times the noise-floor energy a window must exceed to be "
+            "flagged as the snap transient.",
+        )
+
+        return w
+
     def _make_appearance_tab(self) -> QWidget:
         w = QWidget()
         form = self._new_form(w)
@@ -531,6 +609,11 @@ class SettingsTab(QWidget):
         # only theme mechanism now; config.ThemeSettings has been removed.
 
         return w
+
+    def _browse_det_export_path(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Select default export folder")
+        if path:
+            self._det_export_path.setText(path)
 
     def _on_theme_mode_changed(self, index: int) -> None:
         t.set_mode(self._theme_combo.itemData(index))
@@ -662,6 +745,7 @@ class SettingsTab(QWidget):
         vis.spectrogram_overlap         = self._viz_overlap.value()
         vis.spectrogram_min_freq_khz    = self._viz_fmin.value()
         vis.spectrogram_max_freq_khz    = self._viz_fmax.value()
+        vis.segment_start_seconds       = self._viz_seg_start.value()
         vis.segment_length_seconds      = self._viz_seg_len.value()
         vis.colormap                    = self._viz_colormap.currentText()
         vis.label_color                 = self._viz_label_color.currentText()
@@ -685,8 +769,10 @@ class SettingsTab(QWidget):
             params_cls = AbstractClassifier.get(classifier_id).Params
             self._state.settings.classification.set_params(classifier_id, pf.read_params_form(params_cls, widgets))
 
-        # Post-processing
-        post = self._state.settings.detection.post
+        # Post-processing / Detection export
+        detection = self._state.settings.detection
+        detection.export_path = self._det_export_path.text()
+        post = detection.post
         post.maxGapToMerge  = self._post_gap.value()
         post.minLabelLength = self._post_min_len.value()
 
@@ -698,6 +784,12 @@ class SettingsTab(QWidget):
         label_edit.spectrogram_max_freq_khz = self._le_fmax.value()
         label_edit.colormap              = self._le_colormap.currentText()
         label_edit.classifications       = self._le_classifications.text()
+
+        # Video
+        video = self._state.settings.video
+        video.snap_band_min_hz       = self._video_snap_min.value()
+        video.snap_band_max_hz       = self._video_snap_max.value()
+        video.snap_threshold_factor  = self._video_snap_threshold.value()
 
         self._state.settings_changed.emit()
         self._state.segment_changed.emit()
@@ -755,6 +847,7 @@ class SettingsTab(QWidget):
             (self._viz_overlap,  vis.spectrogram_overlap),
             (self._viz_fmin,     vis.spectrogram_min_freq_khz),
             (self._viz_fmax,     vis.spectrogram_max_freq_khz),
+            (self._viz_seg_start, vis.segment_start_seconds),
             (self._viz_seg_len,  vis.segment_length_seconds),
             (self._viz_manual_label_len, vis.manual_label_length),
             (self._viz_sonif_st, vis.sonification_st),
@@ -801,7 +894,12 @@ class SettingsTab(QWidget):
         for classifier_id, widgets in self._classifier_widgets.items():
             pf.reload_params_form(self._state.settings.classification.params_for(classifier_id), widgets)
 
-        # Post-processing
+        # Post-processing / Detection export
+        detection = self._state.settings.detection
+        self._det_export_path.blockSignals(True)
+        self._det_export_path.setText(detection.export_path)
+        self._det_export_path.blockSignals(False)
+
         for widget, value in [
             (self._post_gap,     post.maxGapToMerge),
             (self._post_min_len, post.minLabelLength),
@@ -836,3 +934,14 @@ class SettingsTab(QWidget):
         self._le_classifications.blockSignals(True)
         self._le_classifications.setText(label_edit.classifications)
         self._le_classifications.blockSignals(False)
+
+        # Video
+        video = self._state.settings.video
+        for widget, value in [
+            (self._video_snap_min, video.snap_band_min_hz),
+            (self._video_snap_max, video.snap_band_max_hz),
+            (self._video_snap_threshold, video.snap_threshold_factor),
+        ]:
+            widget.blockSignals(True)
+            widget.setValue(value)
+            widget.blockSignals(False)

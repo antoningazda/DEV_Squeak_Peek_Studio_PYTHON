@@ -126,6 +126,7 @@ class DetectionTab(QWidget):
         export_row = QHBoxLayout(export_group)
         self._export_edit = QLineEdit()
         self._export_edit.setReadOnly(True)
+        self._export_edit.setText(self._state.settings.detection.export_path)
         self._export_edit.setPlaceholderText("Same folder as WAV file")
         self._export_edit.setToolTip(
             "Folder where exported label files are written. Leave blank to use the "

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -10,6 +11,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QRadioButton,
     QSizePolicy,
@@ -266,10 +268,21 @@ class DataInputTab(QWidget):
         ref_path = self._ref_edit.text().strip()
 
         if wav_path:
+            progress = None
+            if self._state.settings.visualization.show_loading_dialog:
+                progress = QProgressDialog(f"Loading {Path(wav_path).name}...", None, 0, 0, self)
+                progress.setWindowTitle("Loading")
+                progress.setMinimumDuration(0)
+                progress.setCancelButton(None)
+                progress.show()
+                QApplication.processEvents()
             try:
                 self._state.load_wav(wav_path)
             except Exception as exc:
                 errors.append(f"WAV: {exc}")
+            finally:
+                if progress is not None:
+                    progress.close()
 
         if det_path:
             try:
@@ -289,6 +302,18 @@ class DataInputTab(QWidget):
 
         if errors:
             QMessageBox.warning(self, "Load errors", "\n".join(errors))
+
+    # ── Selected paths (read by other tabs) ───────────────────────────────
+
+    def single_paths(self) -> tuple[str, str, str]:
+        """(WAV, reference labels, detected labels) as shown in single mode."""
+        return (self._wav_edit.text().strip(), self._ref_edit.text().strip(),
+                self._det_edit.text().strip())
+
+    def batch_paths(self) -> tuple[str, str, str]:
+        """(USV folder, reference-labels folder, detected-labels folder)."""
+        return (self.batch_usv_dir, self._batch_ref_edit.text().strip(),
+                self._batch_det_edit.text().strip())
 
     # ── Called from menu bar ──────────────────────────────────────────────
 

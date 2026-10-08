@@ -34,7 +34,7 @@ class VisualizationTab(QWidget):
         state.wav_loaded.connect(self._refresh)
         state.labels_changed.connect(self._refresh)
         state.segment_changed.connect(self._refresh)
-        state.settings_changed.connect(self._refresh)
+        state.settings_changed.connect(self._on_settings_changed)
         t.signal.changed.connect(self._on_theme_changed)
 
         # Sonification playback state
@@ -115,13 +115,13 @@ class VisualizationTab(QWidget):
 
         self._det_cb = QCheckBox("Detected labels")
         self._det_cb.setToolTip("Show/hide detected-label boxes on the spectrogram.")
-        self._det_cb.setChecked(True)
+        self._det_cb.setChecked(self._state.settings.visualization.show_labels)
         self._det_cb.stateChanged.connect(self._refresh)
         nav_row.addWidget(self._det_cb)
 
         self._ref_cb = QCheckBox("Reference labels")
         self._ref_cb.setToolTip("Show/hide reference-label boxes on the spectrogram.")
-        self._ref_cb.setChecked(True)
+        self._ref_cb.setChecked(self._state.settings.visualization.show_reference_labels)
         self._ref_cb.stateChanged.connect(self._refresh)
         nav_row.addWidget(self._ref_cb)
 
@@ -154,6 +154,18 @@ class VisualizationTab(QWidget):
         new_start = self._state.segment_start + self._state.segment_length
         if new_start < self._state.duration:
             self._start_spin.setValue(new_start)
+
+    def _on_settings_changed(self) -> None:
+        vis = self._state.settings.visualization
+        self._det_cb.blockSignals(True)
+        self._det_cb.setChecked(vis.show_labels)
+        self._det_cb.blockSignals(False)
+
+        self._ref_cb.blockSignals(True)
+        self._ref_cb.setChecked(vis.show_reference_labels)
+        self._ref_cb.blockSignals(False)
+
+        self._refresh()
 
     def _on_theme_changed(self) -> None:
         self._spec.refresh_theme()

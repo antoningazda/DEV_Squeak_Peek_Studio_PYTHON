@@ -311,6 +311,7 @@ class LabelEditTab(QWidget):
             fmax_hz=le.spectrogram_max_freq_khz * 1_000.0,
             nperseg=le.spectrogram_window,
             noverlap=le.spectrogram_overlap,
+            colormap_name=le.colormap,
             detected_labels=[lbl],
             reference_labels=None,
             show_detected=True,

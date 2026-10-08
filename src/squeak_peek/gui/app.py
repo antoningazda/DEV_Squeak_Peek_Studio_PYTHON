@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QStyleFactory
 from . import _shortcuts as shortcuts
 from . import _theme as t
 from ._state import AppState
+from ._tab_classification import ClassificationTab
 from ._tab_data_input import DataInputTab
 from ._tab_detection import DetectionTab
 from ._tab_info import InfoTab
@@ -170,6 +171,27 @@ QScrollBar::handle:horizontal {{
 }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0px; }}
 
+/* ── Tables / progress ───────────────────────────────────────────────── */
+QTableView, QTableWidget {{
+    background: {t.SURFACE}; border: 1px solid {t.BORDER};
+    border-radius: {t.RADIUS_CONTROL}px; gridline-color: {t.BORDER};
+    selection-background-color: {t.ACCENT_SUBTLE}; selection-color: {t.TEXT_PRIMARY};
+}}
+QHeaderView::section {{
+    background: {t.SURFACE_MUTED}; color: {t.TEXT_SECONDARY};
+    border: none; border-right: 1px solid {t.BORDER}; border-bottom: 1px solid {t.BORDER};
+    padding: {t.SP_1}px {t.SP_2}px; font-weight: 600; font-size: {t.TEXT_XS}px;
+}}
+QTableCornerButton::section {{ background: {t.SURFACE_MUTED}; border: none; }}
+QProgressBar {{
+    background: {t.SURFACE_MUTED}; border: 1px solid {t.BORDER};
+    border-radius: 4px;
+}}
+QProgressBar::chunk {{ background: {t.ACCENT}; border-radius: 3px; }}
+QScrollArea {{ background: transparent; border: none; }}
+QScrollArea > QWidget > QWidget {{ background: transparent; }}
+QSplitter::handle {{ background: transparent; }}
+
 /* ── Misc ────────────────────────────────────────────────────────────── */
 QStatusBar {{ background: {t.SURFACE}; color: {t.TEXT_SECONDARY}; border-top: 1px solid {t.BORDER}; }}
 QMenuBar   {{ background: {t.SURFACE}; color: {t.TEXT_PRIMARY}; border-bottom: 1px solid {t.BORDER}; }}
@@ -204,6 +226,8 @@ class MainWindow(QMainWindow):
         self._data_tab = DataInputTab(s)
         self._detection_tab = DetectionTab(s)
         self._detection_tab.set_data_input_tab(self._data_tab)
+        self._classification_tab = ClassificationTab(s)
+        self._classification_tab.set_data_input_tab(self._data_tab)
         self._visualization_tab = VisualizationTab(s)
         self._label_edit_tab = LabelEditTab(s)
         self._video_tab = VideoTab(s)
@@ -222,6 +246,7 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(self._data_tab,           "Data Input")
         self._tabs.addTab(self._visualization_tab,  "Visualization")
         self._tabs.addTab(self._detection_tab,      "Detection")
+        self._tabs.addTab(self._classification_tab, "Classification")
         self._tabs.addTab(self._label_edit_tab,     "Label Edit")
         self._tabs.addTab(self._video_tab,          "Video")
         self._tabs.addTab(MetricsTab(s),            "Metrics")
@@ -232,6 +257,7 @@ class MainWindow(QMainWindow):
             "Load a WAV recording and, optionally, detected/reference label files — single file or a whole batch folder.",
             "Browse the loaded recording's spectrogram segment by segment, toggle overlays, and sonify audio into the audible range.",
             "Run one or more automatic call detectors and export the resulting labels to text files.",
+            "Assign call types to detected calls with a trained CNN + Random Forest model, or train a new model from labeled recordings.",
             "Step through detected labels one at a time to accept/reject their detection and classification, and fix boundaries or call types.",
             "Import a behavior video, auto-sync it to the recording, play it back with a continuous sonified soundtrack and labels, and export a synced copy.",
             "Compare detected labels against reference labels: counts, precision, recall and F1.",
@@ -390,6 +416,29 @@ def _autoload_defaults(state: AppState, data_input_tab: DataInputTab) -> None:
         if files_to_load:
             data_input_tab._load_files()
             logger.info(f"Auto-loaded files: {', '.join(files_to_load)}")
+
+        # Batch mode defaults
+        if data_input.default_usv_batch:
+            usv_dir = Path(data_input.default_usv_batch)
+            if usv_dir.exists():
+                data_input_tab._batch_usv_edit.setText(str(usv_dir))
+                data_input_tab.batch_usv_dir = str(usv_dir)
+                data_input_tab._update_file_count("usv")
+
+        if data_input.default_label_batch:
+            label_dir = Path(data_input.default_label_batch)
+            if label_dir.exists():
+                data_input_tab._batch_det_edit.setText(str(label_dir))
+                data_input_tab._update_file_count("detected")
+
+        if data_input.default_reference_label_batch:
+            ref_dir = Path(data_input.default_reference_label_batch)
+            if ref_dir.exists():
+                data_input_tab._batch_ref_edit.setText(str(ref_dir))
+                data_input_tab._update_file_count("reference")
+
+        if data_input.batch_mode:
+            data_input_tab._batch_mode_rb.setChecked(True)
 
     except Exception as e:
         logger.warning(f"Startup auto-load failed (non-fatal): {e}")
