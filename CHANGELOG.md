@@ -3,7 +3,7 @@
 All notable user-facing changes to Squeak Peek Studio. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.0] — 2026-10-08
 
 - New **PITCH** detector: one event per stretch where a coherent frequency
   contour stands out from the background — exactly what Visualization draws
