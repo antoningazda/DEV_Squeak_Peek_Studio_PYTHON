@@ -10,10 +10,10 @@ MATLAB equivalent
 
 Author
 ------
-    Antonín Gazda
+    Ing. Antonín Gazda
     Master's Thesis — Software for Visualization, Segmentation,
     and Sonification of Ultrasonic Vocalizations of Laboratory Rats
-    Czech Technical University in Prague, 2025
+    Czech Technical University in Prague, FEL, 2025
 """
 
 from __future__ import annotations

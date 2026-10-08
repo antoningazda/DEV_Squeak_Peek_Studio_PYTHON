@@ -32,4 +32,4 @@ Download the installer for your platform from the latest release:
 ## Origin
 
 Python port of Squeak Peek Studio, originally built in MATLAB for
-Antonín Gazda's Master's Thesis (CTU Prague FEE, 2025).
+Antonín Gazda's Master's Thesis (CTU Prague FEL, 2025).
