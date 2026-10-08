@@ -76,6 +76,10 @@ squeak-peek-cli = "cli.main:cli"
 where = ["src", "."]
 include = ["squeak_peek*", "cli*"]
 
+# Logos and the app icon, read from disk at runtime by the GUI.
+[tool.setuptools.package-data]
+"squeak_peek.gui" = ["assets/*/*"]
+
 # squeak_peek.__version__ is the single source of truth for the app's
 # version (read at runtime by the Info tab and the CLI too) — pyproject.toml
 # just mirrors it here instead of duplicating the number.

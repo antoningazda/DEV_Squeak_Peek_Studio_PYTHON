@@ -28,6 +28,7 @@ from squeak_peek.labels.io import import_labels
 from squeak_peek.labels.metrics import compare_labels
 from squeak_peek.labels.model import Label
 from squeak_peek.ml.train import (
+    ProgressFn,
     _nfft_for,
     _preprocess,
     collect_training_data,
@@ -78,7 +79,7 @@ def _extract_validation_features(
 ) -> tuple[np.ndarray, np.ndarray, list[Label], int]:
     fp = frame_params
     signal, fs = load_wav(val_wav_path)
-    gt_labels = import_labels(val_label_path, fs)
+    gt_labels = [lbl for lbl in import_labels(val_label_path, fs) if lbl.detection_state != "Rejected"]
 
     x = _preprocess(signal, fs, fp["fcutMin"], fp["fcutMax"])
     frame_len = round(fp["frame_len_s"] * fs)
@@ -158,6 +159,7 @@ def sweep_noise_ratio(
     min_leaf_size: int = 3,
     min_event_duration: float = 0.003,
     seed: int = 42,
+    progress: ProgressFn | None = None,
 ) -> dict[str, Any]:
     """
     Retrain across several NoiseRatio values and, for each, sweep
@@ -174,19 +176,25 @@ def sweep_noise_ratio(
              "best_stats", "sweep", "model"}]}.
     """
     X, y = collect_training_data(
-        train_pairs, fcut_min=fcut_min, fcut_max=fcut_max, frame_len_s=frame_len_s, hop_len_s=hop_len_s
+        train_pairs, fcut_min=fcut_min, fcut_max=fcut_max, frame_len_s=frame_len_s, hop_len_s=hop_len_s,
+        progress=progress,
     )
     frame_params = {
         "frame_len_s": frame_len_s, "hop_len_s": hop_len_s,
         "fcutMin": fcut_min, "fcutMax": fcut_max,
     }
+    if progress is not None:
+        progress(None, f"Extracting validation features: {Path(val_wav_path).name}")
     X_val, mid_times_val, gt_labels, fs = _extract_validation_features(
         frame_params, val_wav_path, val_label_path
     )
 
     sweep: list[dict[str, Any]] = []
     best: dict[str, Any] | None = None
-    for ratio in noise_ratio_range:
+    for i, ratio in enumerate(noise_ratio_range):
+        if progress is not None:
+            progress(i / len(noise_ratio_range),
+                     f"Training with noise ratio {ratio} ({i + 1}/{len(noise_ratio_range)})")
         model_dict = train_from_features(
             X, y,
             fcut_min=fcut_min, fcut_max=fcut_max,

@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSlider,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -86,9 +87,10 @@ class _LabelStrip(QWidget):
                 x1 = min(self._duration, end) / self._duration * w
                 painter.fillRect(int(x0), 4, max(1, int(x1 - x0)), h - 8, color)
 
-            px = int(self._position / self._duration * w)
-            painter.setPen(QColor("red"))
-            painter.drawLine(px, 0, px, h)
+            if self._spans or self._position > 0:   # no playhead before a video is loaded
+                px = int(self._position / self._duration * w)
+                painter.setPen(QColor(t.DANGER))
+                painter.drawLine(px, 0, px, h)
         finally:
             painter.end()
 
@@ -159,7 +161,17 @@ class VideoTab(QWidget):
         outer.addLayout(sync_row)
 
         self._video_widget.setMinimumHeight(360)
-        outer.addWidget(self._video_widget, stretch=1)
+        self._placeholder = QLabel(
+            "No video loaded.\n\nImport a behavior video recorded alongside the loaded WAV — it is "
+            "synced automatically via an 'sk' label or a finger-snap click, then plays here with "
+            "a sonified soundtrack and the label timeline below."
+        )
+        self._placeholder.setWordWrap(True)
+        self._placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._video_stack = QStackedWidget()
+        self._video_stack.addWidget(self._placeholder)
+        self._video_stack.addWidget(self._video_widget)
+        outer.addWidget(self._video_stack, stretch=1)
 
         self._label_strip = _LabelStrip()
         outer.addWidget(self._label_strip)
@@ -193,6 +205,10 @@ class VideoTab(QWidget):
         self._apply_theme()
 
     def _apply_theme(self) -> None:
+        self._placeholder.setStyleSheet(
+            f"color: {t.TEXT_SECONDARY}; background: {t.SURFACE}; border: 1px dashed {t.BORDER_HOVER};"
+            f"border-radius: {t.RADIUS_PANEL}px; padding: {t.SP_6}px;"
+        )
         self._video_path_label.setStyleSheet(f"color: {t.TEXT_SECONDARY};")
         self._sync_label.setStyleSheet(f"color: {t.TEXT_SECONDARY}; font-size: {t.TEXT_XS}px;")
         self._label_strip.update()
@@ -242,6 +258,7 @@ class VideoTab(QWidget):
     def _on_video_loaded(self) -> None:
         s = self._state
         self._video_path_label.setText(str(s.video_path))
+        self._video_stack.setCurrentWidget(self._video_widget)
         self._sync_label.setText(
             f"Sync offset: {s.video_sync_offset:+.3f} s  ({s.video_sync_method})"
         )
@@ -261,6 +278,7 @@ class VideoTab(QWidget):
         self._player.stop()
         self._player.setSource(QUrl())
         self._video_path_label.setText("No video loaded")
+        self._video_stack.setCurrentWidget(self._placeholder)
         self._sync_label.setText("")
         self._resync_btn.setEnabled(False)
         self._export_btn.setEnabled(False)

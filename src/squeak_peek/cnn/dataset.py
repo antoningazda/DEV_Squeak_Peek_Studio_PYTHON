@@ -58,7 +58,8 @@ class USVBoxDataset(Dataset):
 
         for pair_idx, (wav_path, label_path) in enumerate(wav_label_pairs):
             signal, fs = load_wav(wav_path)
-            labels = import_labels(label_path, fs)
+            # Calls rejected in Label Edit are false detections, not USVs.
+            labels = [lbl for lbl in import_labels(label_path, fs) if lbl.detection_state != "Rejected"]
             self._signals.append(signal)
             self._fs.append(fs)
             self._labels.append(labels)

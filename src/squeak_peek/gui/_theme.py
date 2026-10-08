@@ -15,7 +15,9 @@ in dark mode (and vice versa).
 
 from __future__ import annotations
 
+import tempfile
 from dataclasses import dataclass, fields
+from pathlib import Path
 
 from PyQt6.QtCore import QObject, QSettings, pyqtSignal
 
@@ -163,3 +165,28 @@ def __getattr__(name: str) -> str:
     if name in _PALETTE_FIELDS:
         return getattr(current_palette(), name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# ── Stylesheet glyphs ───────────────────────────────────────────────────
+# QSS can only draw check marks / arrows from image files, and those must
+# match the current palette, so tiny SVGs are written per color on demand.
+_GLYPHS = {
+    "check": '<path d="M3.5 8.5l3 3 6-7" fill="none" stroke="{c}" stroke-width="2.2" '
+             'stroke-linecap="round" stroke-linejoin="round"/>',
+    "dot": '<circle cx="8" cy="8" r="3.2" fill="{c}"/>',
+    "chevron-down": '<path d="M4 6l4 4 4-4" fill="none" stroke="{c}" stroke-width="1.8" '
+                    'stroke-linecap="round" stroke-linejoin="round"/>',
+    "chevron-up": '<path d="M4 10l4-4 4 4" fill="none" stroke="{c}" stroke-width="1.8" '
+                  'stroke-linecap="round" stroke-linejoin="round"/>',
+}
+_GLYPH_DIR = Path(tempfile.gettempdir()) / "squeak_peek_glyphs"
+
+
+def glyph(name: str, color: str) -> str:
+    """Path (forward slashes, for QSS ``url()``) of a 16×16 SVG glyph in ``color``."""
+    path = _GLYPH_DIR / f"{name}_{color.lstrip('#').lower()}.svg"
+    if not path.exists():
+        _GLYPH_DIR.mkdir(parents=True, exist_ok=True)
+        body = _GLYPHS[name].replace("{c}", color)
+        path.write_text(f'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">{body}</svg>')
+    return path.as_posix()

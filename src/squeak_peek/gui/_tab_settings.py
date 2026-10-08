@@ -10,10 +10,13 @@ from PyQt6.QtWidgets import (
     QKeySequenceEdit,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
-    QTabWidget,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -45,9 +48,6 @@ class SettingsTab(QWidget):
         layout.setContentsMargins(t.SP_5, t.SP_4, t.SP_5, t.SP_4)
         layout.setSpacing(t.SP_3)
 
-        inner = QTabWidget()
-        inner.setObjectName("innerTabs")
-        inner.setDocumentMode(True)
         sub_tabs = [
             (self._make_data_input_tab(), "Data Input",
              "Default files/folders auto-loaded at startup, and single-vs-batch mode."),
@@ -76,10 +76,24 @@ class SettingsTab(QWidget):
             (self._make_shortcuts_tab(), "Shortcuts",
              "View and customize keyboard shortcuts."),
         ]
+        # Section list on the left instead of a tab bar: with one sub-tab per
+        # detector/classifier plugin there were too many to fit in one row.
+        body = QHBoxLayout()
+        body.setSpacing(t.SP_4)
+        self._nav = QListWidget()
+        self._nav.setObjectName("settingsNav")
+        self._nav.setFixedWidth(230)
+        self._pages = QStackedWidget()
         for widget, title, tooltip in sub_tabs:
-            idx = inner.addTab(widget, title)
-            inner.setTabToolTip(idx, tooltip)
-        layout.addWidget(inner)
+            item = QListWidgetItem(title)
+            item.setToolTip(tooltip)
+            self._nav.addItem(item)
+            self._pages.addWidget(self._scroll_page(widget))
+        self._nav.currentRowChanged.connect(self._pages.setCurrentIndex)
+        self._nav.setCurrentRow(0)
+        body.addWidget(self._nav)
+        body.addWidget(self._pages, 1)
+        layout.addLayout(body, 1)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -99,6 +113,24 @@ class SettingsTab(QWidget):
         btn_row.addWidget(apply_btn)
         layout.addLayout(btn_row)
 
+    @staticmethod
+    def _scroll_page(widget: QWidget) -> QScrollArea:
+        """Scrollable page, its form capped at a readable width."""
+        widget.setMaximumWidth(920)
+        holder = QWidget()
+        lay = QVBoxLayout(holder)
+        lay.setContentsMargins(0, 0, 0, 0)
+        row = QHBoxLayout()
+        row.addWidget(widget, 1)
+        row.addStretch(0)
+        lay.addLayout(row)
+        lay.addStretch(1)
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QScrollArea.Shape.NoFrame)
+        area.setWidget(holder)
+        return area
+
     # ── Row-building helpers ─────────────────────────────────────────────
 
     @staticmethod
@@ -113,7 +145,10 @@ class SettingsTab(QWidget):
     def _caption(text: str) -> QLabel:
         cap = QLabel(text)
         cap.setWordWrap(True)
-        cap.setStyleSheet(f"color: {t.TEXT_MUTED}; font-size: {t.TEXT_XS}px; padding-bottom: {t.SP_2}px;")
+        cap.setStyleSheet(f"color: {t.TEXT_MUTED}; font-size: {t.TEXT_XS}px;")
+        # A margin, not QSS padding: padding on a word-wrapped label breaks
+        # its height-for-width, clipping the second line.
+        cap.setContentsMargins(0, 0, 0, t.SP_2)
         return cap
 
     def _field(

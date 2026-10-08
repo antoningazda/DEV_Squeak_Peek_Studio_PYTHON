@@ -14,6 +14,7 @@ AppPublisher=NUDZ
 DefaultDirName={autopf}\Squeak Peek Studio
 DefaultGroupName=Squeak Peek Studio
 UninstallDisplayIcon={app}\SqueakPeekStudio.exe
+SetupIconFile=..\src\squeak_peek\gui\assets\icon\app_icon.ico
 OutputDir=installer_output
 OutputBaseFilename=SqueakPeekStudio-Setup
 Compression=lzma2

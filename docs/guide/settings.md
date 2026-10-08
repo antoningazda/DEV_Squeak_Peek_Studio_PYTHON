@@ -4,7 +4,7 @@ Every parameter in the application, in one place, saved to a JSON file you
 can version, share with a collaborator, or attach to a paper as your
 analysis protocol.
 
-The tab is a set of sub-tabs. The detector and classifier sub-tabs are
+The tab is a set of sections, listed on the left. The detector and classifier sections are
 **generated automatically** from the registered plugins — add a detector to
 the codebase and its parameter form appears here with no extra work.
 
@@ -103,8 +103,9 @@ detector-specific and documented in [Methods](../methods.md).
 | ML | `Detection.ML.*` | [Methods → ML](../methods.md#ml-random-forest) |
 | CNN | `Detection.CNN.*` | [Methods → CNN](../methods.md#cnn-faster-r-cnn) |
 
-The ML and CNN pages are where you set `modelPath` — the trained model file
-each one needs.
+The ML and CNN pages are where you set the *Model file* — the trained model
+each one needs. **Detection → Train detector → Use for detection** fills it
+in for you (and, for tuning, writes the tuned values into these pages).
 
 ## Label Edit
 

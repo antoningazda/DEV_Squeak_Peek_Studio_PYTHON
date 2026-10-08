@@ -37,6 +37,8 @@ class DataInputTab(QWidget):
 
         self._setup_ui()
         state.wav_loaded.connect(self._on_wav_loaded)
+        # Labels load after the WAV; without this the counts stayed at 0.
+        state.labels_changed.connect(self._refresh_info)
         t.signal.changed.connect(self._apply_theme)
 
     def _apply_theme(self) -> None:
@@ -325,9 +327,14 @@ class DataInputTab(QWidget):
     # ── State callbacks ───────────────────────────────────────────────────
 
     def _on_wav_loaded(self) -> None:
+        if self._state.wav_path:
+            self._wav_edit.setText(str(self._state.wav_path))
+        self._refresh_info()
+
+    def _refresh_info(self) -> None:
         s = self._state
-        if s.wav_path:
-            self._wav_edit.setText(str(s.wav_path))
+        if s.samples is None:
+            return
         det_n = len(s.detected_labels)
         ref_n = len(s.reference_labels)
         self._info_label.setText(

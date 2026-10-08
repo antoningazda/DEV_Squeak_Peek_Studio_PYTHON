@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-import soundfile as sf
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
@@ -17,25 +16,22 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QProgressDialog,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 import squeak_peek.classifiers  # noqa: F401  (registers built-in classifiers)
 import squeak_peek.detectors  # noqa: F401  (registers built-in detectors)
+from squeak_peek.audio.io import load_wav
 from squeak_peek.classifiers.base import AbstractClassifier
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.labels.io import export_labels, export_labels_detector
-from squeak_peek.labels.postprocess import (
-    filter_broadband_labels,
-    merge_close_labels,
-    remove_short_labels,
-)
+from squeak_peek.labels.postprocess import POST_STEPS, apply_post_processing
 
 from . import _theme as t
+from ._detector_training import DetectorTrainingPage
 from ._state import AppState
-
-_POSTPROCESSING = ["None", "Filter Broadband", "Merge Close Labels", "Remove Short Labels"]
 
 
 class DetectionTab(QWidget):
@@ -48,61 +44,114 @@ class DetectionTab(QWidget):
         self._cancel_requested = False
         self._setup_ui()
         t.signal.changed.connect(self._apply_theme)
+        state.settings_changed.connect(self._on_settings_changed)
 
     def set_data_input_tab(self, tab) -> None:
         """Called by app to link the data input tab for batch mode access."""
         self._data_input_tab = tab
+        self._training_page.set_data_input_tab(tab)
 
     def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(t.SP_5, t.SP_4, t.SP_5, t.SP_4)
+        outer.setSpacing(t.SP_3)
+        self._desc = QLabel(
+            "Run automatic call detectors on the loaded recording (or the whole Data Input batch "
+            "folder) and export their labels — or, in the second sub-tab, tune any detector's "
+            "parameters or train the ML / CNN detector on your own labeled recordings."
+        )
+        self._desc.setWordWrap(True)
+        outer.addWidget(self._desc)
+
+        inner = QTabWidget()
+        inner.setObjectName("innerTabs")
+        inner.setDocumentMode(True)
+        inner.addTab(self._build_run_page(), "Run detectors")
+        self._training_page = DetectorTrainingPage(self._state)
+        self._training_page.set_detection_tab(self)
+        self._training_page.model_applied.connect(self._on_model_applied)
+        inner.addTab(self._training_page, "Train detector")
+        inner.setTabToolTip(0, "Detect calls with one or more detectors and export label files.")
+        inner.setTabToolTip(1, "Tune a detector's parameters, or train the ML / CNN detector, from labeled recordings.")
+        self._inner = inner
+        outer.addWidget(inner, 1)
+        self._apply_theme()
+
+    @staticmethod
+    def _check_list(tooltip: str) -> QListWidget:
+        lst = QListWidget()
+        lst.setObjectName("checkList")
+        lst.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        lst.setToolTip(tooltip)
+        lst.itemClicked.connect(  # click anywhere on the row, not just the box
+            lambda item: item.setCheckState(
+                Qt.CheckState.Unchecked if item.checkState() == Qt.CheckState.Checked
+                else Qt.CheckState.Checked
+            )
+        )
+        return lst
+
+    @staticmethod
+    def _add_check_item(lst: QListWidget, text: str, tooltip: str, checked: bool) -> None:
+        item = QListWidgetItem(text)
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        item.setToolTip(tooltip)
+        lst.addItem(item)
+
+    @staticmethod
+    def _checked(lst: QListWidget) -> list[str]:
+        return [lst.item(i).data(Qt.ItemDataRole.UserRole) or lst.item(i).text()
+                for i in range(lst.count()) if lst.item(i).checkState() == Qt.CheckState.Checked]
+
+    def _build_run_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, t.SP_3, 0, 0)
         layout.setSpacing(t.SP_4)
-        layout.setContentsMargins(t.SP_5, t.SP_4, t.SP_5, t.SP_4)
 
-        # ── Detector selection (multi-select) ─────────────────────────────
-        det_group = QGroupBox("Detectors (select one or more)")
-        det_group.setToolTip("Each selected detector runs independently and exports its own label file.")
+        lists = QHBoxLayout()
+        lists.setSpacing(t.SP_4)
+
+        # ── Detector selection ────────────────────────────────────────────
+        det_group = QGroupBox("Detectors")
+        det_group.setToolTip("Each checked detector runs independently and exports its own label file.")
         det_layout = QVBoxLayout(det_group)
-        self._det_list = QListWidget()
-        self._det_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        self._det_list = self._check_list("Check one or more detectors.")
         for i, detector_cls in enumerate(AbstractDetector.all()):
-            item = QListWidgetItem(detector_cls.id)
-            item.setToolTip(detector_cls.description)
-            if i == 0:
-                item.setSelected(True)
-            self._det_list.addItem(item)
-        self._det_list.setToolTip("Ctrl/Cmd-click or Shift-click to select more than one detector.")
+            self._add_check_item(self._det_list, detector_cls.id, detector_cls.description, i == 0)
+            self._det_list.item(i).setText(f"{detector_cls.id}  —  {self._short(detector_cls.description)}")
+            self._det_list.item(i).setData(Qt.ItemDataRole.UserRole, detector_cls.id)
         det_layout.addWidget(self._det_list)
-        layout.addWidget(det_group)
+        lists.addWidget(det_group, 3, Qt.AlignmentFlag.AlignTop)
 
-        # ── Classifier selection (multi-select, optional) ──────────────────
-        cls_group = QGroupBox("Classifiers (optional — assign call types after detection)")
+        right = QVBoxLayout()
+        right.setSpacing(t.SP_4)
+
+        # ── Classifier selection (optional) ───────────────────────────────
+        cls_group = QGroupBox("Classifiers (optional)")
         cls_group.setToolTip(
-            "Each selected classifier runs on every selected detector's (post-processed) output, "
-            "producing one exported file per detector × classifier pair. Leave empty to export "
-            "each detector's output unclassified, as before."
+            "Each checked classifier assigns call types to every detector's (post-processed) "
+            "output, producing one exported file per detector × classifier pair. Leave all "
+            "unchecked to export unclassified detections."
         )
         cls_layout = QVBoxLayout(cls_group)
-        self._cls_list = QListWidget()
-        self._cls_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        for classifier_cls in AbstractClassifier.all():
-            item = QListWidgetItem(classifier_cls.id)
-            item.setToolTip(classifier_cls.description)
-            self._cls_list.addItem(item)
-        self._cls_list.setToolTip("Ctrl/Cmd-click or Shift-click to select more than one classifier.")
+        self._cls_list = self._check_list("Check classifiers to assign call types after detection.")
+        for i, classifier_cls in enumerate(AbstractClassifier.all()):
+            self._add_check_item(self._cls_list, classifier_cls.display_name, classifier_cls.description, False)
+            self._cls_list.item(i).setData(Qt.ItemDataRole.UserRole, classifier_cls.id)
         cls_layout.addWidget(self._cls_list)
-        layout.addWidget(cls_group)
+        right.addWidget(cls_group)
 
-        # ── Post-processing (multi-select) ────────────────────────────────
-        post_group = QGroupBox("Post-processing (applied in order: None → Filter Broadband → Merge → Remove Short)")
+        # ── Post-processing ───────────────────────────────────────────────
+        post_group = QGroupBox("Post-processing")
         post_group.setToolTip(
-            "Steps applied to every detector's output before export. "
+            "Applied to every detector's output before export, in the listed order. "
             "Thresholds are set in Settings → Post-processing."
         )
         post_layout = QVBoxLayout(post_group)
-        self._post_list = QListWidget()
-        self._post_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        self._post_list = self._check_list("Steps run top to bottom.")
         _POST_TOOLTIPS = {
-            "None": "Export detections exactly as the detector produced them.",
             "Filter Broadband": "Discard detections whose energy is spread across the band "
                                  "instead of concentrated in a narrowband USV whistle — drops "
                                  "cage knocks and rustle (Settings → Post-processing → Min tonality).",
@@ -111,14 +160,17 @@ class DetectionTab(QWidget):
             "Remove Short Labels": "Discard detections shorter than a minimum duration "
                                     "(Settings → Post-processing → Min label length).",
         }
-        for i, name in enumerate(_POSTPROCESSING):
-            item = QListWidgetItem(name)
-            item.setToolTip(_POST_TOOLTIPS.get(name, ""))
-            if i in (2, 3):  # Merge and Remove Short; Filter Broadband is opt-in
-                item.setSelected(True)
-            self._post_list.addItem(item)
+        for name in POST_STEPS:  # Filter Broadband is opt-in
+            self._add_check_item(self._post_list, name, _POST_TOOLTIPS[name], name != "Filter Broadband")
         post_layout.addWidget(self._post_list)
-        layout.addWidget(post_group)
+        right.addWidget(post_group)
+        lists.addLayout(right, 2)
+        layout.addLayout(lists)
+
+        row_h = self.fontMetrics().height() + 2 * t.SP_1 + 4
+        for lst in (self._det_list, self._cls_list, self._post_list):
+            lst.setFixedHeight(max(lst.count(), 1) * row_h + 4)
+        right.addStretch()
 
         # ── Export folder ─────────────────────────────────────────────────
         export_group = QGroupBox("Export folder")
@@ -127,7 +179,7 @@ class DetectionTab(QWidget):
         self._export_edit = QLineEdit()
         self._export_edit.setReadOnly(True)
         self._export_edit.setText(self._state.settings.detection.export_path)
-        self._export_edit.setPlaceholderText("Same folder as WAV file")
+        self._export_edit.setPlaceholderText("Same folder as the WAV file")
         self._export_edit.setToolTip(
             "Folder where exported label files are written. Leave blank to use the "
             "WAV file's own folder."
@@ -135,28 +187,49 @@ class DetectionTab(QWidget):
         export_btn = QPushButton("Browse…")
         export_btn.setToolTip("Choose an export folder.")
         export_btn.clicked.connect(self._browse_export)
+        clear_btn = QPushButton("Reset")
+        clear_btn.setToolTip("Export next to the WAV file again.")
+        clear_btn.clicked.connect(lambda: self._set_export_path(""))
         export_row.addWidget(self._export_edit)
         export_row.addWidget(export_btn)
+        export_row.addWidget(clear_btn)
         layout.addWidget(export_group)
 
-        layout.addStretch()
+        layout.addStretch(1)
 
         # ── Run ───────────────────────────────────────────────────────────
+        run_row = QHBoxLayout()
+        self._status = QLabel("")
+        self._status.setWordWrap(True)
+        run_row.addWidget(self._status, 1)
         self._run_btn = QPushButton("Run detectors")
         self._run_btn.setToolTip(
-            "Run the selected detector(s) — on the loaded file, or on every file in the "
+            "Run the checked detector(s) — on the loaded file, or on every file in the "
             "batch folder if Data Input is in batch mode — then export label files."
         )
         self._run_btn.setObjectName("primaryBtn")
         self._run_btn.setMinimumHeight(36)
         self._run_btn.clicked.connect(self._run)
-        layout.addWidget(self._run_btn)
+        run_row.addWidget(self._run_btn)
+        layout.addLayout(run_row)
+        return page
 
-        self._status = QLabel("")
-        layout.addWidget(self._status)
-        self._apply_theme()
+    @staticmethod
+    def _short(description: str) -> str:
+        first = description.split(". ")[0].rstrip(".")
+        return first if len(first) <= 90 else first[:87] + "…"
+
+    def _on_model_applied(self, det_id: str, _path: str, _sensitivity) -> None:
+        for i in range(self._det_list.count()):
+            item = self._det_list.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == det_id:
+                item.setCheckState(Qt.CheckState.Checked)
+
+    def _on_settings_changed(self) -> None:
+        self._export_edit.setText(self._state.settings.detection.export_path)
 
     def _apply_theme(self) -> None:
+        self._desc.setStyleSheet(f"color: {t.TEXT_SECONDARY}; font-size: {t.TEXT_SM}px;")
         color = {"neutral": t.TEXT_SECONDARY, "success": t.SUCCESS, "danger": t.DANGER}[self._status_kind]
         self._status.setStyleSheet(f"color: {color}; font-size: {t.TEXT_XS}px;")
 
@@ -168,30 +241,26 @@ class DetectionTab(QWidget):
     def _browse_export(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Select export folder")
         if path:
-            self._export_edit.setText(path)
+            self._set_export_path(path)
+
+    def _set_export_path(self, path: str) -> None:
+        """Shared with Settings → Post-processing → Export path."""
+        self._export_edit.setText(path)
+        self._state.settings.detection.export_path = path
+        self._state.settings_changed.emit()
 
     def _run(self) -> None:
         # Get selected detectors
-        selected_detectors = []
-        for item in self._det_list.selectedItems():
-            selected_detectors.append(item.text())
+        selected_detectors = self._checked(self._det_list)
 
         if not selected_detectors:
-            QMessageBox.warning(self, "No detector selected", "Select at least one detector.")
+            QMessageBox.warning(self, "No detector selected", "Check at least one detector.")
             return
 
-        selected_classifiers = [item.text() for item in self._cls_list.selectedItems()]
+        selected_classifiers = self._checked(self._cls_list)
+        selected_post = set(self._checked(self._post_list))
 
-        # Get selected post-processing (in fixed order: None, Merge, Remove Short)
-        selected_post = set()
-        for item in self._post_list.selectedItems():
-            selected_post.add(item.text())
-
-        # Apply in fixed order. Filter Broadband runs before merging: merging
-        # spans the gap between two calls, diluting an otherwise clean
-        # detection's tonality.
-        post_order = ["None", "Filter Broadband", "Merge Close Labels", "Remove Short Labels"]
-        post_processing = [p for p in post_order if p in selected_post]
+        post_processing = [p for p in POST_STEPS if p in selected_post]
 
         # Determine if batch or single mode
         is_batch = self._data_input_tab and self._data_input_tab.batch_mode
@@ -372,24 +441,8 @@ class DetectionTab(QWidget):
                 detector = self._build_detector(det_name)
                 labels = detector.detect(samples, fs)
 
-                # Apply post-processing in fixed order
                 if post_processing:
-                    for post_name in post_processing:
-                        if self._cancel_requested:
-                            return
-                        if post_name == "Filter Broadband":
-                            post = self._state.settings.detection.post
-                            fcut_min, fcut_max = self._detector_band(det_name)
-                            labels = filter_broadband_labels(
-                                labels, samples, fs, post.minTonality or 0.5,
-                                fcut_min=fcut_min, fcut_max=fcut_max,
-                            )
-                        elif post_name == "Merge Close Labels":
-                            post = self._state.settings.detection.post
-                            labels = merge_close_labels(labels, post.maxGapToMerge)
-                        elif post_name == "Remove Short Labels":
-                            post = self._state.settings.detection.post
-                            labels = remove_short_labels(labels, post.minLabelLength)
+                    labels = self.post_process(labels, samples, fs, det_name, post_processing)
 
                 export_path = Path(export_dir)
                 export_path.mkdir(parents=True, exist_ok=True)
@@ -432,14 +485,26 @@ class DetectionTab(QWidget):
                     QApplication.processEvents()
                 raise
 
+    def checked_post_steps(self) -> list[str]:
+        return self._checked(self._post_list)
+
+    def post_process(self, labels, samples, fs, det_id: str, steps: list[str]):
+        """Run detectors' post-processing, with thresholds from Settings."""
+        post = self._state.settings.detection.post
+        fcut_min, fcut_max = self._detector_band(det_id)
+        return apply_post_processing(
+            labels, samples, fs, steps,
+            max_gap=post.maxGapToMerge, min_length=post.minLabelLength,
+            min_tonality=post.minTonality or 0.5, fcut_min=fcut_min, fcut_max=fcut_max,
+        )
+
     def _on_progress_canceled(self) -> None:
         """Called when progress dialog cancel button is clicked."""
         self._cancel_requested = True
 
     def _load_wav_file(self, path: Path):
         """Load WAV file and return samples and sample rate."""
-        samples, fs = sf.read(path)
-        return samples, fs
+        return load_wav(path)
 
     def _detector_band(self, det_id: str) -> tuple[float, float]:
         """The detector's own analysis band, for band-limited post-processing."""

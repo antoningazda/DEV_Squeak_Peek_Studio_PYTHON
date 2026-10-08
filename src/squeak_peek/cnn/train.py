@@ -9,6 +9,7 @@ DeepSqueak's own detector works.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -52,13 +53,19 @@ def train_cnn(
     device: str | None = None,
     seed: int = 42,
     progress: bool = False,
+    progress_callback: Callable[[float | None, str], None] | None = None,
 ) -> dict[str, Any]:
     """
     Train a Faster R-CNN USV detector from (wav, label) file pairs.
 
+    ``progress_callback(fraction, message)`` is called per batch; GUI callers
+    may raise from it to cancel.
+
     Returns a checkpoint dict: {"model_state_dict", "backbone",
     "tile_params", "training_info"} — see save_checkpoint()/load_checkpoint().
     """
+    if progress_callback is not None:
+        progress_callback(None, "Loading recordings and tiling spectrograms…")
     dataset = USVBoxDataset(
         wav_label_pairs,
         window_s=window_s, hop_s=hop_s,
@@ -94,10 +101,17 @@ def train_cnn(
 
     epoch_losses: list[float] = []
     n_skipped = 0
+    n_steps = max(epochs * len(train_loader), 1)
     for epoch in range(epochs):
         model.train()
         running_loss, n_batches = 0.0, 0
-        for images, targets in train_loader:
+        for step, (images, targets) in enumerate(train_loader):
+            if progress_callback is not None:
+                last = f" · last epoch loss {epoch_losses[-1]:.4f}" if epoch_losses else ""
+                progress_callback(
+                    (epoch * len(train_loader) + step) / n_steps,
+                    f"Epoch {epoch + 1}/{epochs} · batch {step + 1}/{len(train_loader)}{last}",
+                )
             images = [img.to(dev) for img in images]
             targets = [{k: v.to(dev) for k, v in t.items()} for t in targets]
 
@@ -133,6 +147,8 @@ def train_cnn(
 
     n_val_detections = n_val_gt = 0
     if val_set is not None and len(val_set) > 0:
+        if progress_callback is not None:
+            progress_callback(None, f"Validating on {len(val_set)} held-out tiles…")
         model.eval()
         with torch.no_grad():
             for i in range(len(val_set)):

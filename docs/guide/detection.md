@@ -1,14 +1,15 @@
 # Detection
 
 Find the calls. Pick one or more detectors, optionally attach a call-type
-classifier, choose post-processing, and run.
+classifier, choose post-processing, and run — all in the **Run detectors**
+sub-tab. The **Train detector** sub-tab
+[tunes or trains detectors](#train-detector) on your own labeled recordings.
 
 ## Detectors
 
 Tick one or more. **Each selected detector runs independently and exports
 its own label file**, which makes it easy to compare two algorithms on the
-same recording in a single pass. Ctrl/Cmd-click or Shift-click for multiple
-selection.
+same recording in a single pass.
 
 | Detector | One-line summary |
 |---|---|
@@ -49,12 +50,14 @@ events a detector already found.
 Applied to every detector's output before export, always in this order:
 
 ```
-None → Filter Broadband → Merge Close Labels → Remove Short Labels
+Filter Broadband → Merge Close Labels → Remove Short Labels
 ```
+
+Leave all three unchecked to export detections exactly as the detector
+produced them.
 
 | Step | Default | What it does |
 |---|---|---|
-| **None** | off | Export detections exactly as the detector produced them |
 | **Filter Broadband** | off | Discard detections whose energy is spread across the band instead of concentrated in a narrowband whistle — drops cage knocks and rustle |
 | **Merge Close Labels** | **on** | Merge detections separated by a gap smaller than *Max gap to merge* |
 | **Remove Short Labels** | **on** | Discard detections shorter than *Min label length* |
@@ -108,6 +111,29 @@ detected labels, so it appears immediately in
 
 In **batch folder** mode every WAV in the folder is processed in turn, one
 file per recording per detector (per classifier).
+
+## Train detector
+
+Fit a detector to *your* recordings. Add labeled recordings with **Add
+loaded** (the Data Input single file + its reference labels), **Add batch**
+(the Data Input batch folders, paired by filename) or **Add files…**, then
+choose what to do:
+
+| Mode | What it does | Result |
+|---|---|---|
+| **Tune detector parameters** | Searches the numeric parameters of any detector (PSD, BSCD, RBD, or the ML/CNN sensitivity) for the best F1 against your labels. Check which parameters to tune and adjust their search ranges; the current values are always tried first, so tuning never makes things worse. | Best parameters, applied to Settings with **Use for detection** |
+| **Train ML model** | Trains the Random Forest frame classifier. Optionally hold one recording out to calibrate the sensitivity (and noise ratio). | `.joblib` model file |
+| **Train CNN model** | Trains the Faster R-CNN box detector (slow without a GPU). | `.pt` checkpoint |
+
+Labels must mark **every** call in the analysed audio — unlabeled calls
+count as false positives. Detections rejected in [Label Edit](label-edit.md)
+are ignored. Tuning scores detections after the post-processing checked in
+Run detectors, and by default only analyses the first 30 s of each
+recording to keep each trial fast — make sure that part contains calls.
+
+**Use for detection** writes the tuned parameters (or the new model path and
+calibrated sensitivity) into the detector's Settings and checks it in Run
+detectors. Save your settings to keep them.
 
 ---
 

@@ -18,6 +18,7 @@ Improvements over the direct MATLAB port:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,9 @@ from squeak_peek.audio.io import load_wav
 from squeak_peek.features.extract import extract_frame_features
 from squeak_peek.labels.io import import_labels
 from squeak_peek.labels.model import Label
+
+# progress(fraction or None, message). GUI callers may raise from it to cancel.
+ProgressFn = Callable[[float | None, str], None]
 
 FEATURE_COLS = [
     "BandPower",
@@ -98,7 +102,8 @@ def extract_labeled_features(
     if X.shape[0] == 0:
         return X, np.zeros(0, dtype=np.int64)
 
-    gt_labels = import_labels(label_path, fs)
+    # Calls rejected in Label Edit are false detections, not USVs.
+    gt_labels = [lbl for lbl in import_labels(label_path, fs) if lbl.detection_state != "Rejected"]
     y = _label_frames(mid_times, gt_labels)
 
     # Defensive NaN/Inf removal (extract_frame_features already sanitises X,
@@ -118,13 +123,17 @@ def collect_training_data(
     fcut_max: float = 120_000,
     frame_len_s: float = 0.02,
     hop_len_s: float = 0.005,
+    progress: ProgressFn | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Extract and concatenate (X, y) across multiple (wav, label) file pairs."""
     if not wav_label_pairs:
         raise ValueError("collect_training_data: no (wav, label) pairs given.")
 
     xs, ys = [], []
-    for wav_path, label_path in wav_label_pairs:
+    n = len(wav_label_pairs)
+    for i, (wav_path, label_path) in enumerate(wav_label_pairs):
+        if progress is not None:
+            progress(i / n, f"Extracting features: {Path(wav_path).name} ({i + 1}/{n})")
         X, y = extract_labeled_features(
             wav_path, label_path,
             fcut_min=fcut_min, fcut_max=fcut_max,
@@ -231,6 +240,7 @@ def train_model(
     min_leaf_size: int = 3,
     noise_ratio: float = 3.0,
     seed: int = 42,
+    progress: ProgressFn | None = None,
 ) -> dict[str, Any]:
     """
     Train a Random Forest USV-frame classifier from (wav, label) file pairs.
@@ -242,7 +252,10 @@ def train_model(
         wav_label_pairs,
         fcut_min=fcut_min, fcut_max=fcut_max,
         frame_len_s=frame_len_s, hop_len_s=hop_len_s,
+        progress=progress,
     )
+    if progress is not None:
+        progress(None, "Training Random Forest…")
     return train_from_features(
         X, y,
         fcut_min=fcut_min, fcut_max=fcut_max,

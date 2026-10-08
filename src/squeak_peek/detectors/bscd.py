@@ -48,7 +48,7 @@ class BSCDParams(BaseModel):
         description="Number of frames used to estimate the local (short-term) signal level.",
     )
     k: float = Field(
-        0.023, ge=0.0, le=10.0,
+        0.023, ge=0.0, le=100.0,
         description="Scales the local-statistics term of the adaptive threshold.",
         json_schema_extra={
             "decimals": 4,
@@ -56,7 +56,7 @@ class BSCDParams(BaseModel):
         },
     )
     w: float = Field(
-        0.994, ge=0.0, le=20.0,
+        0.994, ge=0.0, le=1000.0,
         description="Weight given to the local SNR term when computing the adaptive threshold.",
         json_schema_extra={"decimals": 4},
     )

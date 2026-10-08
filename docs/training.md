@@ -1,11 +1,13 @@
 # Training models
 
-Three trainable models, for two different jobs.
+Three trainable models, for two different jobs — plus parameter tuning for
+the rule-based detectors.
 
 | Model | Job | Where to train it |
 |---|---|---|
-| [ML detector](#ml-detector-random-forest) | Find calls | CLI |
-| [CNN detector](#cnn-detector-faster-r-cnn) | Find calls, with frequency extent | CLI |
+| [Detector parameter tuning](#tuning-detector-parameters) | Fit PSD / BSCD / RBD to your recordings | GUI (Detection → Train detector) |
+| [ML detector](#ml-detector-random-forest) | Find calls | GUI (Detection → Train detector) or CLI |
+| [CNN detector](#cnn-detector-faster-r-cnn) | Find calls, with frequency extent | GUI (Detection → Train detector) or CLI |
 | [Call-type classifier](#call-type-classifier) | Say what kind of call each one is | GUI or CLI |
 
 !!! tip "Train on your own recordings"
@@ -58,11 +60,37 @@ app's [label format](file-formats.md#label-files), ready for `train` or
 
 ---
 
+## Tuning detector parameters
+
+PSD, BSCD and RBD have no model, but their thresholds and window lengths
+decide how well they work on your setup. **Detection → Train detector →
+Tune detector parameters** searches them for the best F1 against your
+reference labels (the successor of the MATLAB app's Bayesian PSD
+optimisation, now for every detector).
+
+- Trial 1 is your current settings, so the result is never worse.
+- About a third of the trials sample the search box at random; the rest
+  refine around the best point found so far.
+- F1 is pooled over all listed recordings, after the post-processing
+  checked in Run detectors.
+- Each trial runs the detector on every recording; limit **Analyse first**
+  (default 30 s) for speed and add more recordings rather than longer ones.
+
+Tuned on few calls, the parameters can overfit — check the result on a
+recording you did not tune on (Metrics tab).
+
+---
+
 ## ML detector (Random Forest)
 
 A frame-wise Random Forest over
 [12 acoustic features](methods.md#ml-random-forest). Fast to train, runs on
 CPU, no extra dependencies.
+
+In the GUI: **Detection → Train detector → Train ML model**. Pick a
+recording under *Calibrate on* to choose the best `sensitivity` on it
+(held out of training when you list two or more recordings). From the
+command line:
 
 ```bash
 squeak-peek-cli train rec1.wav rec2.wav rec3.wav \
@@ -99,7 +127,7 @@ Label files must be given in the **same order and count** as the WAV files.
 
 Predicts a full time/frequency box per call rather than classifying frames.
 PyTorch comes with the standard install, so there is nothing extra to set
-up.
+up. Train it in **Detection → Train detector → Train CNN model**, or:
 
 ```bash
 squeak-peek-cli train-cnn rec1.wav rec2.wav \

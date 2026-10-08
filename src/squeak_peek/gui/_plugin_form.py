@@ -28,6 +28,7 @@ range and the model's validation can never drift apart.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -69,6 +70,29 @@ def _bounds(info: FieldInfo) -> tuple[float | None, float | None]:
     return lo, hi
 
 
+_LABELS = {
+    "modelPath": "Model file",
+    "fcutMin": "Band low cutoff",
+    "fcutMax": "Band high cutoff",
+    "ROIstart": "ROI start",
+    "ROIlength": "ROI length",
+    "wlen": "Window length",
+    "maWindow": "Moving-average window",
+    "k": "k",
+    "w": "w",
+}
+
+
+def _humanize(name: str) -> str:
+    """Field name → form label, e.g. 'minEventDuration' → 'Min event duration'."""
+    if name in _LABELS:
+        return _LABELS[name]
+    words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name.replace("_", " ")).split()
+    words = [w if w.isupper() and len(w) > 1 else w.lower() for w in words]
+    text = " ".join(words)
+    return text[:1].upper() + text[1:]
+
+
 def build_params_form(
     form: QFormLayout,
     params: BaseModel,
@@ -90,7 +114,7 @@ def build_params_form(
     for name, info in model_fields.items():
         extra = _extra(info)
         value = getattr(params, name)
-        label_text = extra.get("label", name)
+        label_text = extra.get("label") or _humanize(name)
         tooltip = info.description or name
         caption = extra.get("caption")
         unit = extra.get("unit", "")
@@ -123,7 +147,7 @@ def build_params_form(
             hi if hi is not None else (1e12 if is_float else 2_147_483_647),
         )
         if is_float:
-            decimals = extra.get("decimals", 4)
+            decimals = extra.get("decimals", 0 if unit == "Hz" else 4)
             spin.setDecimals(decimals)
             spin.setSingleStep(extra.get("step", 10 ** -decimals))
         if unit:

@@ -93,16 +93,14 @@ class LabelEditTab(QWidget):
 
         # Navigation row
         nav_row = QHBoxLayout()
-        self._prev_btn = QPushButton("◀")
-        self._prev_btn.setFixedWidth(36)
+        self._prev_btn = QPushButton("◀  Prev")
         self._prev_btn.setToolTip(
             f"Previous label (shortcut: {shortcuts.get_shortcut('prev_segment').toString()})."
         )
         self._prev_btn.clicked.connect(self._prev)
         nav_row.addWidget(self._prev_btn)
 
-        self._next_btn = QPushButton("▶")
-        self._next_btn.setFixedWidth(36)
+        self._next_btn = QPushButton("Next  ▶")
         self._next_btn.setToolTip(
             f"Next label (shortcut: {shortcuts.get_shortcut('next_segment').toString()})."
         )

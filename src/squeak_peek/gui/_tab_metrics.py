@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFormLayout,
     QGroupBox,
@@ -72,9 +73,9 @@ class MetricsTab(QWidget):
             "Compare the currently loaded detected labels against the reference labels."
         )
         self._compute_btn.setObjectName("primaryBtn")
-        self._compute_btn.setMinimumHeight(32)
+        self._compute_btn.setMinimumHeight(36)
         self._compute_btn.clicked.connect(self._compute)
-        layout.addWidget(self._compute_btn)
+        layout.addWidget(self._compute_btn, 0, Qt.AlignmentFlag.AlignRight)
 
         self._apply_theme()
 

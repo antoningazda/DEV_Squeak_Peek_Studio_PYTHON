@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction, QKeyEvent, QKeySequence
+from PyQt6.QtGui import QAction, QIcon, QKeyEvent, QKeySequence
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QStyleFactory, QTabWidget
 
 from . import _shortcuts as shortcuts
@@ -27,6 +27,18 @@ from ._tab_video import VideoTab
 from ._tab_visualization import VisualizationTab
 
 logger = logging.getLogger(__name__)
+
+_ICON_DIR = Path(__file__).parent / "assets" / "icon"
+
+
+def _app_icon() -> QIcon:
+    """The rat logo (same artwork as the MATLAB app's icon)."""
+    icon = QIcon()
+    for name in ("app_icon_256.png", "app_icon_1024.png"):
+        path = _ICON_DIR / name
+        if path.exists():
+            icon.addFile(str(path))
+    return icon
 
 
 def _build_qss() -> str:
@@ -135,7 +147,22 @@ QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{
 }}
 QLineEdit:disabled {{ color: {t.TEXT_MUTED}; background: {t.SURFACE_MUTED}; }}
 QLineEdit:read-only {{ background: {t.SURFACE_MUTED}; color: {t.TEXT_SECONDARY}; }}
-QComboBox::drop-down {{ border: none; width: 20px; }}
+QComboBox {{ padding-right: 24px; }}
+QComboBox::drop-down {{ border: none; width: 22px; subcontrol-origin: padding; subcontrol-position: center right; }}
+QComboBox::down-arrow {{ image: url({t.glyph("chevron-down", t.TEXT_SECONDARY)}); width: 12px; height: 12px; }}
+QComboBox::down-arrow:disabled {{ image: url({t.glyph("chevron-down", t.TEXT_MUTED)}); }}
+QSpinBox, QDoubleSpinBox {{ padding-right: 22px; }}
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border; width: 20px; border: none; background: transparent;
+}}
+QSpinBox::up-button, QDoubleSpinBox::up-button {{ subcontrol-position: top right; margin-top: 2px; }}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{ subcontrol-position: bottom right; margin-bottom: 2px; }}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{ background: {t.SURFACE_HOVER}; border-radius: 3px; }}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{ image: url({t.glyph("chevron-up", t.TEXT_SECONDARY)}); width: 10px; height: 10px; }}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ image: url({t.glyph("chevron-down", t.TEXT_SECONDARY)}); width: 10px; height: 10px; }}
+QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {{ color: {t.TEXT_MUTED}; background: {t.SURFACE_MUTED}; }}
 QComboBox QAbstractItemView {{
     background: {t.SURFACE}; border: 1px solid {t.BORDER};
     selection-background-color: {t.ACCENT_SUBTLE}; selection-color: {t.TEXT_PRIMARY};
@@ -144,16 +171,55 @@ QComboBox QAbstractItemView {{
 
 /* ── Checkboxes / radio buttons ──────────────────────────────────────── */
 QCheckBox, QRadioButton, QLabel {{ background: transparent; color: {t.TEXT_PRIMARY}; }}
-QCheckBox::indicator, QRadioButton::indicator {{
+QCheckBox::indicator, QRadioButton::indicator, QAbstractItemView::indicator {{
     width: 15px; height: 15px;
     border: 1px solid {t.BORDER_HOVER}; background: {t.SURFACE};
 }}
-QCheckBox::indicator {{ border-radius: 4px; }}
+QCheckBox::indicator, QAbstractItemView::indicator {{ border-radius: 4px; }}
 QRadioButton::indicator {{ border-radius: 8px; }}
-QCheckBox::indicator:hover, QRadioButton::indicator:hover {{ border-color: {t.ACCENT}; }}
-QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
+QCheckBox::indicator:hover, QRadioButton::indicator:hover, QAbstractItemView::indicator:hover {{ border-color: {t.ACCENT}; }}
+QCheckBox::indicator:checked, QAbstractItemView::indicator:checked {{
     background: {t.ACCENT}; border-color: {t.ACCENT};
+    image: url({t.glyph("check", t.TEXT_ON_ACCENT)});
 }}
+QRadioButton::indicator:checked {{
+    background: {t.ACCENT}; border-color: {t.ACCENT};
+    image: url({t.glyph("dot", t.TEXT_ON_ACCENT)});
+}}
+QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{ background: {t.SURFACE_MUTED}; border-color: {t.BORDER}; }}
+QCheckBox:disabled, QRadioButton:disabled {{ color: {t.TEXT_MUTED}; }}
+
+/* ── Check lists (Detection tab) ─────────────────────────────────────── */
+QListWidget#checkList {{
+    background: {t.SURFACE}; border: none; outline: none;
+}}
+QListWidget#checkList::item {{ padding: {t.SP_1}px {t.SP_1}px; border-radius: {t.RADIUS_CONTROL}px; color: {t.TEXT_PRIMARY}; }}
+QListWidget#checkList::item:hover {{ background: {t.SURFACE_HOVER}; }}
+
+/* ── Settings section list ───────────────────────────────────────────── */
+QListWidget#settingsNav {{
+    background: {t.SURFACE}; border: 1px solid {t.BORDER};
+    border-radius: {t.RADIUS_PANEL}px; padding: {t.SP_1}px; outline: none;
+}}
+QListWidget#settingsNav::item {{
+    padding: {t.SP_2}px {t.SP_3}px; border-radius: {t.RADIUS_CONTROL}px;
+    color: {t.TEXT_SECONDARY};
+}}
+QListWidget#settingsNav::item:hover {{ background: {t.SURFACE_HOVER}; color: {t.TEXT_PRIMARY}; }}
+QListWidget#settingsNav::item:selected {{
+    background: {t.ACCENT_SUBTLE}; color: {t.TEXT_PRIMARY}; font-weight: 600;
+}}
+
+/* ── Sliders ─────────────────────────────────────────────────────────── */
+QSlider::groove:horizontal {{ height: 4px; background: {t.BORDER}; border-radius: 2px; }}
+QSlider::sub-page:horizontal {{ background: {t.ACCENT}; border-radius: 2px; }}
+QSlider::handle:horizontal {{
+    background: {t.SURFACE}; border: 2px solid {t.ACCENT};
+    width: 12px; height: 12px; margin: -6px 0; border-radius: 8px;
+}}
+QSlider::handle:horizontal:hover {{ background: {t.ACCENT_SUBTLE}; }}
+QSlider::groove:horizontal:disabled, QSlider::sub-page:horizontal:disabled {{ background: {t.BORDER}; }}
+QSlider::handle:horizontal:disabled {{ border-color: {t.BORDER_HOVER}; }}
 
 /* ── Form layout labels ──────────────────────────────────────────────── */
 QFormLayout QLabel {{ color: {t.TEXT_SECONDARY}; }}
@@ -445,9 +511,18 @@ def _autoload_defaults(state: AppState, data_input_tab: DataInputTab) -> None:
 
 
 def main() -> None:
+    if sys.platform == "win32":
+        # Without an explicit AppUserModelID, Windows groups the window under
+        # python.exe in the taskbar and shows Python's icon instead of ours.
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("cz.nudz.squeakpeekstudio")
+        except Exception:  # noqa: BLE001
+            pass
     app = QApplication(sys.argv)
     app.setApplicationName("Squeak Peek Studio")
     app.setOrganizationName("NUDZ")
+    app.setWindowIcon(_app_icon())
     # Force Qt's cross-platform style: on macOS, native widget styling
     # (e.g. QComboBox popups rendered as real Cocoa menus) bypasses our
     # QSS entirely, which looks broken in dark mode. Fusion respects it.

@@ -17,6 +17,8 @@ from PyInstaller.utils.hooks import collect_submodules
 
 SPEC_DIR = Path(SPECPATH)
 SRC_DIR = SPEC_DIR.parent / "src"
+ASSETS_DIR = SRC_DIR / "squeak_peek" / "gui" / "assets"
+ICON_DIR = ASSETS_DIR / "icon"
 
 sys.path.insert(0, str(SRC_DIR))
 from squeak_peek import __version__ as APP_VERSION  # noqa: E402
@@ -43,7 +45,8 @@ a = Analysis(
     [str(SPEC_DIR / "launcher.py")],
     pathex=[str(SRC_DIR)],
     binaries=[],
-    datas=[],
+    # Logos (Info tab) and the app icon are read from disk at runtime.
+    datas=[(str(ASSETS_DIR), "squeak_peek/gui/assets")],
     hiddenimports=plugin_hidden_imports,
     hookspath=[],
     hooksconfig={},
@@ -65,6 +68,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
+    icon=str(ICON_DIR / "app_icon.ico"),
 )
 
 coll = COLLECT(
@@ -80,7 +84,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="Squeak Peek Studio.app",
-        icon=None,
+        icon=str(ICON_DIR / "app_icon.icns"),
         bundle_identifier="cz.nudz.squeakpeekstudio",
         info_plist={
             "CFBundleName": "Squeak Peek Studio",

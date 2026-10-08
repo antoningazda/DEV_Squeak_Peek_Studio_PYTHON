@@ -299,3 +299,36 @@ def adaptive_strongest_filter(
         keep.append(lbl)
 
     return keep
+
+
+# Order the Detection tab applies its steps in. Filter Broadband runs before
+# merging: merging spans the gap between two calls, diluting an otherwise
+# clean detection's tonality.
+POST_STEPS = ("Filter Broadband", "Merge Close Labels", "Remove Short Labels")
+
+
+def apply_post_processing(
+    labels: list[Label],
+    samples: np.ndarray,
+    fs: int,
+    steps: list[str] | tuple[str, ...],
+    *,
+    max_gap: float,
+    min_length: float,
+    min_tonality: float = 0.5,
+    fcut_min: float = 40_000.0,
+    fcut_max: float = 120_000.0,
+) -> list[Label]:
+    """Apply the selected ``steps`` (names from POST_STEPS) in POST_STEPS order."""
+    for step in POST_STEPS:
+        if step not in steps:
+            continue
+        if step == "Filter Broadband":
+            labels = filter_broadband_labels(
+                labels, samples, fs, min_tonality or 0.5, fcut_min=fcut_min, fcut_max=fcut_max,
+            )
+        elif step == "Merge Close Labels":
+            labels = merge_close_labels(labels, max_gap)
+        elif step == "Remove Short Labels":
+            labels = remove_short_labels(labels, min_length)
+    return labels
