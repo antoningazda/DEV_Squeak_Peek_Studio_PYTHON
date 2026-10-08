@@ -80,7 +80,7 @@ class InfoTab(QWidget):
             )
         )
         layout.addSpacing(t.SP_5)
-        layout.addWidget(_centered("<b>Author:</b> Antonín Gazda"))
+        layout.addWidget(_centered("<b>Author:</b> Ing. Antonín Gazda"))
 
         # Author email link
         email_label = QLabel(f'<a href="mailto:{AUTHOR_EMAIL}" style="color: inherit; text-decoration: none;">{AUTHOR_EMAIL}</a>')
@@ -90,7 +90,7 @@ class InfoTab(QWidget):
 
         layout.addWidget(
             _centered(
-                "Czech Technical University in Prague<br>"
+                "Czech Technical University in Prague, FEL<br>"
                 "National Institute of Mental Health (NUDZ)"
             )
         )

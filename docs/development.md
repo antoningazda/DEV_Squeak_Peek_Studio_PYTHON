@@ -219,5 +219,5 @@ Issues and questions:
 
 ## Licence
 
-MIT. Original MATLAB application: Bc. Antonín Gazda, Master's thesis, CTU
-Prague FEE, May 2025.
+MIT. Original MATLAB application: Ing. Antonín Gazda, Master's thesis, CTU
+Prague FEL, May 2025.

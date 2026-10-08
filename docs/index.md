@@ -103,10 +103,10 @@ training headlessly, over single files or whole folders.
 ## Credits and citation
 
 Squeak Peek Studio is a Python reimplementation and extension of the MATLAB
-application developed by **Bc. Antonín Gazda** for his Master's thesis at the
-**Czech Technical University in Prague, Faculty of Electrical Engineering**
-(May 2025), in collaboration with the **National Institute of Mental Health
-(NUDZ)**.
+application developed by **Ing. Antonín Gazda** as a Master's thesis at the
+**Czech Technical University in Prague, Faculty of Electrical Engineering
+(FEL)** (May 2025), in collaboration with the **National Institute of Mental
+Health (NUDZ)**.
 
 - Thesis: [CTU DSpace record](https://dspace.cvut.cz/entities/publication/dede5152-081b-41cf-a4ba-55dacad884d5)
 - Source code: [github.com/antoningazda/DEV_Squeak_Peek_Studio_PYTHON](https://github.com/antoningazda/DEV_Squeak_Peek_Studio_PYTHON)

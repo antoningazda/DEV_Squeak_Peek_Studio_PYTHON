@@ -175,4 +175,4 @@ data/                  # Example WAV files and labels
 
 ## Reference
 
-Original MATLAB application: Bc. Antonín Gazda, Master's Thesis, CTU Prague FEE, May 2025.
+Original MATLAB application: Ing. Antonín Gazda, Master's Thesis, CTU Prague FEL, May 2025.
