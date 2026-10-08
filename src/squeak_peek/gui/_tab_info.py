@@ -18,7 +18,7 @@ from squeak_peek import __version__ as APP_VERSION
 from . import _theme as t
 
 # URLs for the buttons
-GITHUB_REPO_URL = "https://github.com/antoningazda/Squeak-Peek-Studio"
+GITHUB_REPO_URL = "https://github.com/antoningazda/DEV_Squeak_Peek_Studio_PYTHON"
 # The documentation site is built from docs/ in the Python repo and published
 # to the public releases repo's GitHub Pages (.github/workflows/docs.yml), so
 # it sits next to the installers users download.
