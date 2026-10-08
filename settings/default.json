@@ -57,8 +57,8 @@
       "maWindow": 7500,
       "noiseWindow": 800000,
       "localWindow": 5000,
-      "k": 0.01,
-      "w": 6.0
+      "k": 15.0,
+      "w": 300.0
     },
     "RBD": {
       "fcutMin": 40000,
@@ -67,10 +67,10 @@
       "AR_order_left": 4,
       "AR_order_right": 4,
       "Bayesian_Evidence_order": 4,
-      "dynamicScaling": 0.1,
+      "dynamicScaling": 0.00015,
       "smoothingWindowRBD": 0.04,
       "smoothingWindowThr": 0.01,
-      "amplitudeThreshold": 0.001
+      "amplitudeThreshold": 0.01
     },
     "POST": {
       "maxGapToMerge": 0.005,
