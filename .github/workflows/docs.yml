@@ -1,0 +1,92 @@
+name: Docs
+
+# The documentation source lives in this (code) repo so it cannot drift from
+# the software it describes, but the published site lives in the public
+# releases repo — which is where users already go for the installers:
+#
+#   https://antoningazda.github.io/squeak-peek-studio-releases/
+#
+# Every push to main that touches the docs rebuilds and republishes. Pull
+# requests build only, so a broken site is caught before it is published.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch: {}
+
+# Never let two publishes race for the same gh-pages branch.
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+
+      - name: Install MkDocs
+        run: pip install -r docs/requirements.txt
+
+      # --strict turns broken internal links and bad config into build
+      # failures, so a typo'd cross-reference never reaches the live site.
+      - name: Build
+        run: mkdocs build --strict
+
+      - name: Upload site
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site/
+          retention-days: 7
+
+  publish:
+    name: Publish to releases repo
+    needs: build
+    # Only from main, and never from a fork's pull request — the token is
+    # not available there anyway.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download site
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: site
+
+      # Jekyll would otherwise swallow MkDocs' _* asset directories.
+      - name: Disable Jekyll processing
+        run: touch site/.nojekyll
+
+      - name: Push to squeak-peek-studio-releases:gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          # Same fine-grained PAT the release workflow uses — it needs
+          # Contents: write on the releases repo, which covers gh-pages.
+          personal_token: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
+          external_repository: antoningazda/squeak-peek-studio-releases
+          publish_branch: gh-pages
+          publish_dir: ./site
+          # The site is fully regenerated every time; keeping history would
+          # grow the repo without ever being useful.
+          force_orphan: true
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
+          commit_message: "docs: publish from ${{ github.sha }}"

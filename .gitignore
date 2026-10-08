@@ -47,3 +47,6 @@ data/**/*.wav
 *.spec
 !packaging/SqueakPeekStudio.spec
 dist/
+
+# MkDocs build output (docs/ is the source; the site is built by CI)
+site/

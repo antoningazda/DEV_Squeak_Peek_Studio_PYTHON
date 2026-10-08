@@ -1,0 +1,103 @@
+/* Squeak Peek Studio docs — small refinements on top of mkdocs-material. */
+
+:root {
+  --spk-hero-bg: linear-gradient(135deg, #e6f4f3 0%, #f7fbfa 100%);
+  --spk-hero-fg: #10342f;
+  --spk-hero-muted: #3c5f5a;
+}
+
+[data-md-color-scheme="slate"] {
+  --spk-hero-bg: linear-gradient(135deg, #16322f 0%, #10211f 100%);
+  --spk-hero-fg: #e7f3f1;
+  --spk-hero-muted: #9fc3bd;
+}
+
+/* Landing hero ----------------------------------------------------------- */
+
+.spk-hero {
+  background: var(--spk-hero-bg);
+  color: var(--spk-hero-fg);
+  border-radius: 0.6rem;
+  padding: 2.2rem 1.6rem 1.8rem;
+  margin: 0 0 2rem;
+  text-align: center;
+}
+
+.spk-hero h1 {
+  margin: 0.2rem 0 0.4rem;
+  font-weight: 700;
+  color: var(--spk-hero-fg);
+}
+
+.spk-hero p {
+  margin: 0 auto 1.2rem;
+  max-width: 44rem;
+  color: var(--spk-hero-muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.spk-hero img {
+  width: 108px;
+  height: auto;
+  margin-bottom: 0.4rem;
+}
+
+.spk-hero .md-button {
+  margin: 0.2rem 0.25rem;
+}
+
+/* Feature grid ----------------------------------------------------------- */
+
+.spk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.9rem;
+  margin: 1.4rem 0 2rem;
+}
+
+.spk-card {
+  border: 1px solid var(--md-default-fg--lightest);
+  border-radius: 0.5rem;
+  padding: 0.9rem 1rem;
+  background: var(--md-default-bg-color);
+}
+
+.spk-card h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--md-primary-fg-color);
+}
+
+.spk-card p {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--md-default-fg--light);
+}
+
+/* Tables are dense in the methods/settings pages — keep them readable. */
+
+.md-typeset table:not([class]) th {
+  white-space: nowrap;
+}
+
+.md-typeset table:not([class]) code {
+  white-space: nowrap;
+}
+
+/* Screenshot placeholders ------------------------------------------------ */
+
+.spk-shot {
+  border: 1px solid var(--md-default-fg--lightest);
+  border-radius: 0.4rem;
+  overflow: hidden;
+}
+
+@media screen and (max-width: 44.9em) {
+  .spk-hero {
+    padding: 1.6rem 1rem 1.4rem;
+  }
+}
