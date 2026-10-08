@@ -85,19 +85,20 @@ project. A source checkout ships `settings/default.json`.
       "fcutMax": 120000,
       "segmentLength": 8192,
       "k": 0.023,
-      "w": 3.0
+      "w": 0.994,
+      "denoise": true
     },
     "BSCD": {
       "wlen": 0.008,
       "maWindow": 7500,
-      "thresholdMode": "mean"
+      "thresholdMode": "mean",
+      "denoise": false
     },
     "PRE": {
-      "enabled": false,
       "nfft": 1024,
-      "noisePercentile": 20.0,
-      "oversubtraction": 1.5,
-      "maxReductionDb": 18.0
+      "noisePercentile": 50.0,
+      "oversubtraction": 1.25,
+      "maxReductionDb": 30.0
     },
     "POST": {
       "maxGapToMerge": 0.005,

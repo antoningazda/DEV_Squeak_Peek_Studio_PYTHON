@@ -22,6 +22,7 @@ from typing import Any
 import numpy as np
 from scipy.signal import medfilt
 
+from squeak_peek.audio.denoise import DenoiseParams, preprocess
 from squeak_peek.audio.io import load_wav
 from squeak_peek.features.extract import extract_frame_features
 from squeak_peek.labels.io import import_labels
@@ -32,6 +33,7 @@ from squeak_peek.ml.train import (
     _nfft_for,
     _preprocess,
     collect_training_data,
+    model_denoise,
     train_from_features,
 )
 
@@ -79,6 +81,7 @@ def _extract_validation_features(
 ) -> tuple[np.ndarray, np.ndarray, list[Label], int]:
     fp = frame_params
     signal, fs = load_wav(val_wav_path)
+    signal = preprocess(signal, fs, model_denoise(fp))
     gt_labels = [lbl for lbl in import_labels(val_label_path, fs) if lbl.detection_state != "Rejected"]
 
     x = _preprocess(signal, fs, fp["fcutMin"], fp["fcutMax"])
@@ -160,6 +163,7 @@ def sweep_noise_ratio(
     min_event_duration: float = 0.003,
     seed: int = 42,
     progress: ProgressFn | None = None,
+    denoise: DenoiseParams | None = None,
 ) -> dict[str, Any]:
     """
     Retrain across several NoiseRatio values and, for each, sweep
@@ -177,11 +181,12 @@ def sweep_noise_ratio(
     """
     X, y = collect_training_data(
         train_pairs, fcut_min=fcut_min, fcut_max=fcut_max, frame_len_s=frame_len_s, hop_len_s=hop_len_s,
-        progress=progress,
+        progress=progress, denoise=denoise,
     )
     frame_params = {
         "frame_len_s": frame_len_s, "hop_len_s": hop_len_s,
         "fcutMin": fcut_min, "fcutMax": fcut_max,
+        "denoise": denoise.model_dump() if denoise is not None else None,
     }
     if progress is not None:
         progress(None, f"Extracting validation features: {Path(val_wav_path).name}")
@@ -200,7 +205,7 @@ def sweep_noise_ratio(
             fcut_min=fcut_min, fcut_max=fcut_max,
             frame_len_s=frame_len_s, hop_len_s=hop_len_s,
             n_trees=n_trees, min_leaf_size=min_leaf_size,
-            noise_ratio=ratio, seed=seed,
+            noise_ratio=ratio, seed=seed, denoise=denoise,
         )
         sens_result = _score_sensitivities(
             model_dict["model"], X_val, mid_times_val, gt_labels, fs,

@@ -55,40 +55,44 @@ events a detector already found.
 
 ## Pre-processing
 
-One checkbox, applied to the **audio** before any detector sees it:
+One checkbox per classical detector: **denoise the audio before that
+detector runs**. Each box is the detector's own `denoise` setting
+([Settings](settings.md#detector-sub-tabs) → *detector* → Denoise), so the
+two always agree.
 
-| Step | Default | What it does |
+| Detector | Default | Why |
 |---|---|---|
-| **Denoise (suppress stationary background noise)** | off | Estimates each frequency bin's background level from the recording itself and subtracts it, so a detector's envelope is driven by the calls rather than by the room |
+| **PSD** | **on** | On raw recordings the in-band noise floor is most of PSD's envelope; denoising roughly doubles its precision |
+| **BSCD** | off | Its mean threshold is fitted to raw audio; denoising adds false positives |
+| **RBD** | off | Its own bandpass already does the work |
 
-An ultrasonic recording is mostly background — fans, electronics,
-microphone hiss — that barely changes over a session, while calls are
-sparse and brief. Energy-based detectors see that constant in-band noise as
-a large part of their envelope, which costs precision. See
-[Pre-detection denoising](../methods.md#pre-detection-denoising) for the
-algorithm and its parameters.
+Denoising estimates each frequency bin's background level from the
+recording itself and subtracts it (Settings →
+[Pre-processing](settings.md#pre-processing) holds the shared algorithm
+settings). See [Pre-detection denoising](../methods.md#pre-detection-denoising)
+for the algorithm and the measurements behind the defaults.
 
 Three things worth knowing:
 
-- It applies to the **classical detectors** (PSD, BSCD, RBD). **ML** and
-  **CNN** ignore it and apply whatever denoising their own model was
-  trained with, so training and inference always see the same kind of
-  audio.
+- **ML** and **CNN** have no checkbox: they apply whatever denoising their
+  own model was trained with, so training and inference always see the
+  same kind of audio.
 - It is for **detection only**. Export, [Label Edit](label-edit.md),
   sonification and [classification](classification.md) all keep working on
   the original recording — denoising never ends up in anything you listen
   to, look at or ship.
-- Thresholds tuned on raw audio **may need retuning** after you turn it on;
-  the envelope it feeds the detector is quieter and flatter. Score the
-  change on a recording you have reference labels for before trusting it.
+- Changing a detector's box changes what its thresholds are fitted to;
+  score the change on a recording you have reference labels for (or
+  re-tune) before trusting it.
 
 The denoised audio is computed once per recording and reused by every
-selected classical detector in the same run.
+selected detector that has its box checked.
 
 !!! tip "From the command line"
 
-    `squeak-peek-cli detect recording.wav --denoise` (also on `batch`).
-    See the [CLI reference](../cli.md#detect).
+    `squeak-peek-cli detect recording.wav -d bscd --denoise` (also on
+    `batch`) overrides the chosen detector's setting; `--no-denoise` turns
+    it off. See the [CLI reference](../cli.md#detect).
 
 ## Post-processing
 
@@ -187,20 +191,15 @@ recording to keep each trial fast — make sure that part contains calls.
 calibrated sensitivity) into the detector's Settings and checks it in Run
 detectors. Save your settings to keep them.
 
-!!! note "Denoising follows into training and tuning"
+!!! note "Denoising in training and tuning"
 
-    Whatever **Pre-processing → Denoise** is set to in Run detectors is
-    what this sub-tab uses:
-
-    - **Tuning** denoises each recording once and searches parameters
-      against that audio, so the values you get are the values that fit how
-      you will actually run the detector.
-    - **Training** an ML or CNN model records the denoising in the model
-      file, and the detector reapplies exactly that at inference — which is
-      why ML and CNN ignore the checkbox at detection time.
-
-    Change the checkbox and the result is a different model, or a different
-    set of tuned parameters. Tune or train with it set the way you will run.
+    - **Tuning** follows the tuned detector's own `denoise` setting: if it
+      is on, each recording is denoised once and every trial is scored on
+      that audio, so the parameters fit how you will actually run it.
+    - **Training** an ML or CNN model denoises the training audio only when
+      **Denoise the training audio** (under *Output*) is ticked, and records
+      that in the model file; the detector reapplies exactly that at
+      inference.
 
 ---
 

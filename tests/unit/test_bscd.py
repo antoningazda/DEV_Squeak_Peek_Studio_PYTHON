@@ -2,7 +2,7 @@
 Tests for the BSCD (Bayesian Sequential Change Detection) detector.
 
 Coverage:
-  1. Correctness validation: compare jitted implementation against plain-numpy reference
+  1. Correctness validation: jitted recursion vs bscd.m's closed form, per window
   2. Short synthetic signal tests for fast iteration
   3. Real audio end-to-end tests against example fixture
   4. Label extraction and format validation
@@ -14,163 +14,6 @@ import numpy as np
 import pytest
 
 from squeak_peek.detectors.bscd import BSCDDetector, BSCDParams, bscd
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Utilities: plain-numpy reference implementation for correctness validation
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def _inv_2x2_reference(a, b, c, d):
-    """Reference 2x2 matrix inverse (numpy)."""
-    det = a * d - b * c
-    if np.abs(det) < 1e-15:
-        return 1.0, 0.0, 0.0, 1.0
-    inv_det = 1.0 / det
-    return inv_det * d, inv_det * (-b), inv_det * (-c), inv_det * a
-
-
-def bscd_reference(signal: np.ndarray, window_samples: int) -> np.ndarray:
-    """
-    Reference BSCD implementation (plain numpy, no numba).
-    Used for correctness validation of the jitted version.
-    """
-    N = len(signal)
-    p2 = np.zeros(N)
-
-    m = window_samples // 2
-
-    # Initialize window
-    G = np.zeros((window_samples, 2))
-    for j in range(m):
-        G[j, 0] = 1.0
-    for j in range(m, window_samples):
-        G[j, 1] = 1.0
-
-    data = signal[:window_samples]
-    D = np.sum(data * data)
-
-    CHI = np.zeros(2)
-    CHI[0] = np.sum(data * G[:, 0])
-    CHI[1] = np.sum(data * G[:, 1])
-
-    GTG = G.T @ G
-    fi = np.linalg.inv(GTG)
-    delta = np.linalg.det(GTG)
-
-    chi_fi_chi = CHI @ fi @ CHI
-    cit = ((-window_samples + 1.0 + 1.0) / 2.0) * np.log10(D - chi_fi_chi + 1e-12)
-    jm = 0.5 * np.log10(np.abs(delta) + 1e-12)
-
-    CHI_E = np.sum(data)
-    GTG_E = window_samples
-    fi_e = 1.0 / GTG_E
-    delta_e = GTG_E
-
-    FTF = CHI_E * fi_e * CHI_E
-    B = fi_e * CHI_E
-    BTB = B * B
-
-    E1 = (-window_samples / 2.0) * np.log10(np.pi + 1e-12)
-    E2 = -0.5 * np.log10(np.abs(delta_e) + 1e-12)
-    E3 = np.log10(np.exp(np.log(1.0 / 2.0)))
-    E5 = -(window_samples - 1.0) / 2.0 * np.log10(D - FTF + 1e-12)
-    E6 = -0.5 * 1.0 * np.log10(np.abs(BTB) + 1e-12)
-    evid = E1 + E2 + E3 + E5 + E6
-
-    p2[m] = cit - jm - evid
-
-    # Main loop
-    for mm in range(m + 1, N - m):
-        d2 = signal[mm + m]
-        d2_sq = d2 * d2
-
-        D = D + d2_sq
-
-        # Model 1: add new sample
-        CHI[0] += d2 * 1.0
-        CHI[1] += d2 * 1.0
-
-        W = fi @ np.array([1.0, 1.0])
-        LAMBDA = 1.0 + np.array([1.0, 1.0]) @ W
-        delta = delta * LAMBDA
-        fi = fi - np.outer(W, W) / LAMBDA
-
-        # Model 2: add new sample
-        CHI_E += d2
-        w_e = fi_e * 1.0
-        lambda_e = 1.0 + 1.0 * w_e
-        delta_e = delta_e * lambda_e
-        fi_e -= w_e * (1.0 / lambda_e) * w_e
-
-        # Remove old sample
-        d_old = signal[mm - m]
-        d_old_sq = d_old * d_old
-        D = D - d_old_sq
-
-        # Model 1: remove
-        Z = np.array([1.0, 0.0])
-        W = fi @ Z
-        LAMBDA = 1.0 - Z @ W
-        delta = delta * LAMBDA
-        fi = fi + np.outer(W, W) / LAMBDA
-        CHI -= d_old * Z
-
-        # Model 2: remove
-        z_e = 1.0
-        w_e = fi_e * z_e
-        lambda_e_remove = 1.0 - z_e * w_e
-        delta_e = delta_e * lambda_e_remove
-        fi_e += (1.0 / lambda_e_remove) * w_e * w_e
-        CHI_E -= d_old
-
-        # Shift window
-        R = np.array([0.0, 1.0])
-        W = fi @ R
-        LAMBDA = 1.0 - R @ W
-        delta = delta * LAMBDA
-        fi = fi + np.outer(W, W) / LAMBDA
-        CHI -= signal[mm] * R
-
-        Q = np.array([1.0, 0.0])
-        W = fi @ Q
-        LAMBDA = 1.0 + Q @ W
-        delta = delta * LAMBDA
-        fi = fi - np.outer(W, W) / LAMBDA
-        CHI += signal[mm] * Q
-
-        # Compute evidence
-        chi_fi_chi = CHI @ fi @ CHI
-        cit = ((-window_samples + 1.0 + 1.0) / 2.0) * np.log10(
-            D - chi_fi_chi + 1e-12
-        )
-        jm = 0.5 * np.log10(np.abs(delta) + 1e-12)
-
-        # Model 2
-        B = fi_e * CHI_E
-        BTB = B * B
-        FTF = CHI_E * fi_e * CHI_E
-
-        E1 = (-window_samples / 2.0) * np.log10(np.pi + 1e-12)
-        E2 = -0.5 * np.log10(np.abs(delta_e) + 1e-12)
-        E3 = np.log10(np.exp(np.log(1.0 / 2.0)))
-        E5 = -(window_samples - 1.0) / 2.0 * np.log10(D - FTF + 1e-12)
-        E6 = 0.5 * 1.0 * np.log10(np.abs(BTB) + 1e-12)
-        evid = E1 + E2 + E3 + E5 - E6
-
-        p2[mm] = cit - jm - evid
-
-    # Normalize
-    nonzero_idx = np.nonzero(p2)[0]
-    if len(nonzero_idx) > 0:
-        min_p2 = np.min(p2[nonzero_idx])
-    else:
-        min_p2 = 0.0
-
-    out = p2 - min_p2
-    out = np.maximum(out, 0.0)
-
-    return out
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test Suite
@@ -237,6 +80,53 @@ class TestBSCDCore:
         assert np.min(result) >= -1e-10
         assert np.all(np.isfinite(result))
 
+    @staticmethod
+    def _bscd_direct(signal: np.ndarray, okno: int) -> np.ndarray:
+        """bscd.m evaluated window by window from its closed form (even okno).
+
+        At MATLAB index mm the window is sig(mm-m+1 .. mm+m), split into
+        a left mean over sig(mm-m+1 .. mm) and a right mean over the rest.
+        """
+        sig = signal / np.max(np.abs(signal))
+        L, N, m = len(sig), okno, okno // 2
+        p2 = np.zeros(L)
+        e1 = (-N / 2) * np.log10(np.pi)
+        e3 = np.log10(np.sqrt(np.pi))
+        for mm in range(m, L - m + 1):  # mm = m is the initialisation window
+            w = sig[mm - m: mm + m]
+            left, right = w[:m], w[m:]
+            d = w @ w
+            cit = ((-N + 2) / 2) * np.log10(d - left.sum() ** 2 / m - right.sum() ** 2 / (N - m))
+            jm = 0.5 * np.log10(m * (N - m))
+            mean = w.sum() / N
+            evid = (e1 - 0.5 * np.log10(N) + e3
+                    - ((N - 1) / 2) * np.log10(d - w.sum() ** 2 / N)
+                    - 0.5 * np.log10(mean ** 2))
+            p2[mm - 1] = cit - jm - evid
+        nz = p2 != 0
+        out = p2 - p2[nz].min()
+        return out * (out > 0)
+
+    def test_bscd_matches_closed_form(self):
+        """The recursive core must equal bscd.m evaluated per window — this
+        pins the window bookkeeping (a one-sample slip used to leave a stale
+        sample in the running sums) and the min-over-computed-samples shift."""
+        rng = np.random.default_rng(0)
+        signal = np.abs(rng.normal(size=600)) + 0.1
+        signal[300:400] += 2.0
+        okno = 60
+
+        expected = self._bscd_direct(signal, okno)
+        result = bscd(signal, okno)
+
+        np.testing.assert_allclose(result, expected, rtol=1e-7, atol=1e-6)
+
+    def test_bscd_is_scale_invariant(self):
+        """bscd.m normalises its input, so the statistic ignores amplitude."""
+        rng = np.random.default_rng(1)
+        signal = np.abs(rng.normal(size=500)) + 0.05
+        np.testing.assert_allclose(bscd(signal, 50), bscd(signal * 1e-4, 50), rtol=1e-6, atol=1e-6)
+
 
 class TestBSCDDetector:
     """Test the BSCDDetector high-level detector."""
@@ -277,7 +167,7 @@ class TestBSCDDetector:
 
         # Events should have valid times
         for label in labels:
-            assert 0 <= label.start_time < label.end_time <= duration
+            assert 0 <= label.start_time <= label.end_time <= duration
             assert 0 <= label.start_index < label.stop_index < len(signal)
             assert label.label == "d"
 
@@ -342,7 +232,7 @@ class TestBSCDRealAudio:
         for label in labels:
             assert label.start_time >= 0
             assert label.end_time <= duration_test
-            assert label.start_time < label.end_time
+            assert label.start_time <= label.end_time  # single-frame events are kept, as in MATLAB
             assert label.start_index >= 0
             assert label.stop_index < len(short_clip)
             assert label.label == "d"
@@ -371,7 +261,7 @@ class TestBSCDRealAudio:
         # Real audio should typically produce some detections
         # (not enforced here since it depends on the audio content)
         for label in labels:
-            assert label.start_time < label.end_time
+            assert label.start_time <= label.end_time  # single-frame events are kept, as in MATLAB
 
     def test_detector_output_consistency(self, example_audio):
         """

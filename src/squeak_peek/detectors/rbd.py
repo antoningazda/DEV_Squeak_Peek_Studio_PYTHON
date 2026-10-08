@@ -10,8 +10,8 @@ from __future__ import annotations
 import numpy as np
 from numba import njit
 from pydantic import BaseModel, Field
-from scipy.ndimage import uniform_filter1d
 
+from squeak_peek.audio.filters import bandpass_filter_filtfilt, movmean
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.labels.model import Label
 
@@ -31,8 +31,42 @@ class RBDParams(BaseModel):
         description="Upper bound of the frequency band the RBD detector analyses.",
         json_schema_extra={"unit": "Hz", "group": "freq_band"},
     )
+    denoise: bool = Field(
+        False,
+        description="Suppress stationary background noise before this detector runs.",
+        json_schema_extra={
+            "caption": "Off by default: with the bandpass on it did not improve RBD on the reference recordings. Noise-suppression settings: Settings → Pre-processing. "
+                       "Export, review and classification always keep the original audio.",
+        },
+    )
+    bandpass: bool = Field(
+        True,
+        description="Bandpass-filter the signal to [fcutMin, fcutMax] before fitting the AR models.",
+        json_schema_extra={
+            "caption": "Off reproduces RBDDetector.m, which fits the AR models to the full-band signal — "
+                       "there they mostly describe noise below the USV band.",
+        },
+    )
+    thresholdMode: str = Field(
+        "median",
+        description="How the smoothed RBD statistic is thresholded.",
+        json_schema_extra={
+            "choices": ["median", "original"],
+            "caption": "'median' = above medianFactor × the recording's median (robust to a single loud "
+                       "transient); 'original' = RBDDetector.m's dynamicScaling / amplitudeThreshold rule, "
+                       "relative to the statistic's global maximum.",
+        },
+    )
+    medianFactor: float = Field(
+        4.0, ge=1.0, le=100.0,
+        description="Threshold in 'median' mode, as a multiple of the smoothed statistic's median.",
+        json_schema_extra={
+            "decimals": 2,
+            "caption": "Higher -> fewer, more confident detections.",
+        },
+    )
     wlen: float = Field(
-        0.04, ge=0.0, le=1.0,
+        0.02, ge=0.0, le=1.0,
         description="Length of the sliding window compared on either side of each candidate boundary.",
         json_schema_extra={"unit": "s", "decimals": 4},
     )
@@ -52,22 +86,22 @@ class RBDParams(BaseModel):
     )
     dynamicScaling: float = Field(
         0.3, ge=0.0, le=10.0,
-        description="Scales the adaptive detection threshold relative to the signal's local statistics.",
+        description="Scales the adaptive detection threshold relative to the signal's local statistics ('original' threshold mode only).",
         json_schema_extra={"decimals": 4},
     )
     smoothingWindowRBD: float = Field(
-        0.02, ge=0.0, le=1.0,
+        0.03, ge=0.0, le=1.0,
         description="Smoothing window applied to the RBD detection statistic before thresholding.",
         json_schema_extra={"unit": "s", "decimals": 4},
     )
     smoothingWindowThr: float = Field(
         0.02, ge=0.0, le=1.0,
-        description="Smoothing window applied to the adaptive threshold itself.",
+        description="Smoothing window applied to the adaptive threshold itself ('original' threshold mode only).",
         json_schema_extra={"unit": "s", "decimals": 4},
     )
     amplitudeThreshold: float = Field(
         0.02, ge=0.0, le=1.0,
-        description="Minimum normalized signal amplitude required for a candidate event to be kept.",
+        description="Minimum normalized signal amplitude required for a candidate event to be kept ('original' threshold mode only).",
         json_schema_extra={"decimals": 4},
     )
 
@@ -378,10 +412,16 @@ class RBDDetector(AbstractDetector):
     """
     RBD (Recursive Bayesian Detector) for ultrasonic vocalization detection.
 
-    Port of RBDDetector.m: normalize -> rbd() -> normalize -> smooth -> dynamic
-    threshold -> binary edges -> Label events. Unlike PSD/BSCD, RBDDetector.m
-    does NOT bandpass-filter the input; it runs directly on the DC-removed,
-    normalized signal.
+    Based on RBDDetector.m: normalize -> [bandpass] -> rbd() -> smooth ->
+    threshold -> binary edges -> Label events.
+
+    Two departures from the MATLAB detector, each switchable back:
+    ``bandpass`` (RBDDetector.m fits the AR models to the full-band signal,
+    where they mostly model noise below the USV band) and
+    ``thresholdMode="median"`` (RBDDetector.m thresholds relative to the
+    statistic's global maximum, so one loud transient moves the threshold
+    for the whole recording). On the five reference recordings the two
+    together took RBD from F1 ~0.25-0.4 to ~0.6-0.8.
     """
 
     id = "RBD"
@@ -406,6 +446,9 @@ class RBDDetector(AbstractDetector):
             return []
         signal = signal / max_val
 
+        if self.params.bandpass:
+            signal = bandpass_filter_filtfilt(signal, fs, self.params.fcutMin, self.params.fcutMax, order=12)
+
         rbd_out = rbd(
             signal,
             window_samples,
@@ -419,21 +462,19 @@ class RBDDetector(AbstractDetector):
             return []
         rbd_out = rbd_out / rbd_max
 
-        # Smoothing (MATLAB RBDDetector.m line 73: movmean). Uses scipy's O(N)
-        # sliding-window mean rather than np.convolve, whose O(N * window)
-        # cost is impractical at this scale (tens of millions of samples).
+        # Smoothing (MATLAB RBDDetector.m line 73: movmean, edges shrink).
         smooth_window_rbd = max(1, round(self.params.smoothingWindowRBD * fs))
-        smooth_rbd = uniform_filter1d(rbd_out, size=smooth_window_rbd, mode="nearest")
+        smooth_rbd = movmean(rbd_out, smooth_window_rbd)
 
-        # Dynamic threshold (MATLAB RBDDetector.m line 74)
-        smooth_window_thr = max(1, round(self.params.smoothingWindowThr * fs))
-        dynamic_threshold = (
-            uniform_filter1d(smooth_rbd, size=smooth_window_thr, mode="nearest")
-            * self.params.dynamicScaling
-        )
-
-        # Thresholding (MATLAB RBDDetector.m line 76)
-        binary = (smooth_rbd > dynamic_threshold) & (smooth_rbd > self.params.amplitudeThreshold)
+        if self.params.thresholdMode == "original":
+            # Dynamic threshold (MATLAB RBDDetector.m lines 74, 76)
+            smooth_window_thr = max(1, round(self.params.smoothingWindowThr * fs))
+            dynamic_threshold = movmean(smooth_rbd, smooth_window_thr) * self.params.dynamicScaling
+            binary = (smooth_rbd > dynamic_threshold) & (smooth_rbd > self.params.amplitudeThreshold)
+        else:
+            # Relative to the typical (median) level of the statistic, which the
+            # sparse calls barely move — unlike its maximum.
+            binary = smooth_rbd > self.params.medianFactor * np.median(smooth_rbd)
 
         # Find edges (MATLAB RBDDetector.m lines 77-79)
         edges = np.diff(np.concatenate([[0], binary.astype(int), [0]]))

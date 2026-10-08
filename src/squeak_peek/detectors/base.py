@@ -31,6 +31,13 @@ class AbstractDetector(Plugin):
 
     _registry: ClassVar[dict[str, type[AbstractDetector]]] = {}
 
+    #: Whether the pipeline may denoise this detector's input (when its
+    #: Params has ``denoise`` on; algorithm settings in Detection.PRE, see
+    #: squeak_peek.audio.denoise). Learned detectors set False and instead
+    #: apply whatever denoising their model was trained with, so training
+    #: and inference always see the same kind of audio.
+    uses_pipeline_preprocessing: ClassVar[bool] = True
+
     def __init__(self, params) -> None:
         """
         Parameters
@@ -58,6 +65,13 @@ class AbstractDetector(Plugin):
         List of Label objects (start/end time, label string, frequencies).
         """
         ...
+
+    @property
+    def wants_denoise(self) -> bool:
+        """True when the pipeline should hand this detector denoised audio:
+        its Params has ``denoise`` switched on and it is not a learned
+        detector that applies its model's own denoising."""
+        return self.uses_pipeline_preprocessing and bool(getattr(self.params, "denoise", False))
 
     @property
     def name(self) -> str:

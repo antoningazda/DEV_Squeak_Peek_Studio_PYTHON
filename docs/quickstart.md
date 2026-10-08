@@ -64,8 +64,8 @@ Go to the **Detection** tab.
 1. Under **Detectors**, tick **PSD** (**BSCD** is ticked by default — untick
    it, or leave both: every ticked detector runs and writes its own label
    file).
-2. Leave **Pre-processing → Denoise** off for now. It helps on noisy
-   recordings but wants its own threshold tuning —
+2. Leave **Pre-processing** as it is: PSD denoises its input by default,
+   BSCD and RBD do not —
    [see Detection](guide/detection.md#pre-processing).
 3. Under **Post-processing**, **Merge Close Labels** and **Remove Short
    Labels** are on by default. Leave them.

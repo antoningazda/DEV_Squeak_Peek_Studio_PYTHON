@@ -169,3 +169,26 @@ def band_restrict(
     """
     mask = (frequencies >= f_low) & (frequencies <= f_high)
     return frequencies[mask], Sxx[mask, :]
+
+
+def movmean(x: np.ndarray, window: int) -> np.ndarray:
+    """
+    Centered moving mean matching MATLAB's ``movmean(x, k)`` /
+    ``smoothdata(x, 'movmean', k)``.
+
+    The window spans k//2 elements before the current one and k-1-(k//2)
+    after, and *shrinks* at the edges (averages only the in-range elements)
+    instead of padding. O(N) via a cumulative sum.
+    """
+    x = np.asarray(x, dtype=np.float64)
+    window = int(round(window))
+    if window <= 1 or x.size == 0:
+        return x.copy()
+    n = len(x)
+    before = window // 2
+    after = window - 1 - before
+    idx = np.arange(n)
+    start = np.clip(idx - before, 0, n)
+    end = np.clip(idx + after + 1, 0, n)
+    csum = np.concatenate([[0.0], np.cumsum(x)])
+    return (csum[end] - csum[start]) / (end - start)

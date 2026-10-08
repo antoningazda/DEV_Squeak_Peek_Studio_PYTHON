@@ -36,6 +36,7 @@ from squeak_peek.labels.model import Label
 
 ProgressFn = Callable[[float | None, str], None]
 PostProcessFn = Callable[[list[Label], np.ndarray, int], list[Label]]
+PreProcessFn = Callable[[np.ndarray, int], np.ndarray]
 
 # Fields left out of the default search: the analysis band and ROI are
 # experiment choices, not knobs to fit; model orders change cost a lot.
@@ -171,6 +172,7 @@ def tune_detector(
     n_trials: int = 40,
     max_seconds: float | None = 30.0,
     post_process: PostProcessFn | None = None,
+    pre_process: PreProcessFn | None = None,
     seed: int = 0,
     progress: ProgressFn | None = None,
 ) -> TuningResult:
@@ -179,7 +181,9 @@ def tune_detector(
 
     ``max_seconds`` limits each recording to its first N seconds (labels
     outside are dropped) to keep each trial fast; ``None`` uses everything.
-    ``post_process(labels, samples, fs)`` mirrors Run detectors' steps.
+    ``pre_process(samples, fs)`` (e.g. denoising) runs once per recording
+    before every trial; ``post_process(labels, samples, fs)`` mirrors Run
+    detectors' steps and receives the original samples.
     ``progress`` may raise to cancel.
     """
     active = [r for r in ranges if r.enabled]
@@ -199,8 +203,8 @@ def tune_detector(
         if max_seconds:
             samples = samples[: int(round(max_seconds * fs))]
             labels = [lbl for lbl in labels if lbl.end_time <= max_seconds]
-        data.append((samples, fs, labels))
-    if sum(len(lbl) for _s, _f, lbl in data) == 0:
+        data.append((samples, pre_process(samples, fs) if pre_process else samples, fs, labels))
+    if sum(len(lbl) for _s, _d, _f, lbl in data) == 0:
         raise ValueError("The label files contain no calls in the analysed part of the recordings.")
 
     base = _prepare_params(detector_id, base_params)
@@ -211,8 +215,8 @@ def tune_detector(
             params = type(base).model_validate({**base_values, **values})
             detector = det_cls(params)
             stats = []
-            for samples, fs, ref in data:
-                detected = detector.detect(samples, fs)
+            for samples, det_input, fs, ref in data:
+                detected = detector.detect(det_input, fs)
                 if post_process is not None:
                     detected = post_process(detected, samples, fs)
                 stats.append(compare_labels(detected, ref))

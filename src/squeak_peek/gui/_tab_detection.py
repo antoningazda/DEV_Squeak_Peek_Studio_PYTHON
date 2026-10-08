@@ -6,6 +6,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -23,6 +24,7 @@ from PyQt6.QtWidgets import (
 
 import squeak_peek.classifiers  # noqa: F401  (registers built-in classifiers)
 import squeak_peek.detectors  # noqa: F401  (registers built-in detectors)
+from squeak_peek.audio.denoise import preprocess
 from squeak_peek.audio.io import load_wav
 from squeak_peek.classifiers.base import AbstractClassifier
 from squeak_peek.detectors.base import AbstractDetector
@@ -143,6 +145,26 @@ class DetectionTab(QWidget):
         cls_layout.addWidget(self._cls_list)
         right.addWidget(cls_group)
 
+        # ── Pre-processing ────────────────────────────────────────────────
+        pre_group = QGroupBox("Pre-processing: denoise input")
+        pre_group.setToolTip(
+            "Suppress stationary background noise before the checked detectors run "
+            "(Settings → Pre-processing). ML / CNN detectors use the denoising their model "
+            "was trained with. Export, Label Edit and classification keep the original audio."
+        )
+        pre_layout = QVBoxLayout(pre_group)
+        self._pre_checks: dict[str, QCheckBox] = {}
+        for detector_cls in AbstractDetector.all():
+            if not detector_cls.uses_pipeline_preprocessing or "denoise" not in detector_cls.Params.model_fields:
+                continue
+            cb = QCheckBox(detector_cls.display_name)
+            cb.setToolTip(detector_cls.Params.model_fields["denoise"].description or "")
+            cb.toggled.connect(lambda checked, det_id=detector_cls.id: self._on_denoise_toggled(det_id, checked))
+            pre_layout.addWidget(cb)
+            self._pre_checks[detector_cls.id] = cb
+        self._sync_denoise_checks()
+        right.addWidget(pre_group)
+
         # ── Post-processing ───────────────────────────────────────────────
         post_group = QGroupBox("Post-processing")
         post_group.setToolTip(
@@ -227,6 +249,21 @@ class DetectionTab(QWidget):
 
     def _on_settings_changed(self) -> None:
         self._export_edit.setText(self._state.settings.detection.export_path)
+        self._sync_denoise_checks()
+
+    def _sync_denoise_checks(self) -> None:
+        """Mirror each detector's own ``denoise`` parameter."""
+        detection = self._state.settings.detection
+        for det_id, cb in self._pre_checks.items():
+            cb.blockSignals(True)
+            cb.setChecked(bool(getattr(detection.params_for(det_id), "denoise", False)))
+            cb.blockSignals(False)
+
+    def _on_denoise_toggled(self, det_id: str, checked: bool) -> None:
+        detection = self._state.settings.detection
+        params = detection.params_for(det_id).model_copy(update={"denoise": checked})
+        detection.set_params(det_id, params)
+        self._state.settings_changed.emit()
 
     def _apply_theme(self) -> None:
         self._desc.setStyleSheet(f"color: {t.TEXT_SECONDARY}; font-size: {t.TEXT_SM}px;")
@@ -423,6 +460,8 @@ class DetectionTab(QWidget):
         """Run all selected detectors (and optional classifiers) on a signal,
         applying post-processing to each detector's output before export."""
         total_detectors = len(detectors)
+        pre = self._state.settings.detection.pre
+        denoised = None  # computed once per file, only if a detector wants it
 
         for det_idx, det_name in enumerate(detectors, 1):
             if self._cancel_requested:
@@ -439,7 +478,15 @@ class DetectionTab(QWidget):
 
             try:
                 detector = self._build_detector(det_name)
-                labels = detector.detect(samples, fs)
+                det_input = samples
+                if detector.wants_denoise:
+                    if denoised is None:
+                        if self._progress_dialog:
+                            self._progress_dialog.setLabelText(f"Denoising {base_name}...")
+                            QApplication.processEvents()
+                        denoised = preprocess(samples, fs, pre)
+                    det_input = denoised
+                labels = detector.detect(det_input, fs)
 
                 if post_processing:
                     labels = self.post_process(labels, samples, fs, det_name, post_processing)

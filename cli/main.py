@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import click
@@ -18,6 +19,7 @@ import numpy as np
 
 import squeak_peek.detectors  # noqa: F401  (registers built-in detectors)
 from squeak_peek import __version__ as APP_VERSION
+from squeak_peek.audio.denoise import preprocess
 from squeak_peek.audio.io import load_wav
 from squeak_peek.config import AppSettings
 from squeak_peek.detectors.base import AbstractDetector
@@ -80,13 +82,22 @@ def _postprocess(
 def _run_detection(wav_path: Path, detector_name: str, settings: AppSettings) -> list[Label]:
     signal, fs = load_wav(wav_path)
     detector = _build_detector(detector_name, settings)
+    det_input = preprocess(signal, fs, settings.detection.pre) if detector.wants_denoise else signal
     try:
-        labels = detector.detect(signal, fs)
+        labels = detector.detect(det_input, fs)
     except (ValueError, RuntimeError) as exc:
         # e.g. MLDetector/CNNDetector when Params.modelPath isn't configured,
         # or the CNN extra isn't installed.
         raise click.ClickException(str(exc)) from exc
     return _postprocess(labels, settings, signal, fs, _detector_band(detector_name, settings))
+
+
+def _set_denoise(settings: AppSettings, detector_name: str, denoise: bool) -> None:
+    """Override a detector's own ``denoise`` parameter (if it has one)."""
+    det_id = detector_name.upper()
+    params = settings.detection.params_for(det_id)
+    if "denoise" in type(params).model_fields:
+        settings.detection.set_params(det_id, params.model_copy(update={"denoise": denoise}))
 
 
 def _default_output_path(wav_path: Path, detector_name: str) -> Path:
@@ -121,9 +132,19 @@ def cli() -> None:
     help="Drop broadband (non-USV) detections below this tonality score, 0-1. "
          "Overrides Detection.POST.minTonality. Try 0.5.",
 )
-def detect(wav_path: Path, detector: str, settings: Path, output: Path | None, min_tonality: float | None) -> None:
+@click.option(
+    "--denoise/--no-denoise", default=None,
+    help="Suppress stationary background noise before detection. Overrides the "
+         "detector's own 'denoise' setting (PSD/BSCD/RBD; ML/CNN follow their model).",
+)
+def detect(
+    wav_path: Path, detector: str, settings: Path, output: Path | None,
+    min_tonality: float | None, denoise: bool | None,
+) -> None:
     """Run a detector on a single WAV file."""
     app_settings = AppSettings.from_json(settings)
+    if denoise is not None:
+        _set_denoise(app_settings, detector, denoise)
     if min_tonality is not None:
         app_settings.detection.post.minTonality = min_tonality
     labels = _run_detection(wav_path, detector.lower(), app_settings)
@@ -155,9 +176,19 @@ def detect(wav_path: Path, detector: str, settings: Path, output: Path | None, m
     help="Drop broadband (non-USV) detections below this tonality score, 0-1. "
          "Overrides Detection.POST.minTonality. Try 0.5.",
 )
-def batch(wav_dir: Path, detector: str, settings: Path, output_dir: Path | None, min_tonality: float | None) -> None:
+@click.option(
+    "--denoise/--no-denoise", default=None,
+    help="Suppress stationary background noise before detection. Overrides the "
+         "detector's own 'denoise' setting (PSD/BSCD/RBD; ML/CNN follow their model).",
+)
+def batch(
+    wav_dir: Path, detector: str, settings: Path, output_dir: Path | None,
+    min_tonality: float | None, denoise: bool | None,
+) -> None:
     """Run a detector on all WAV files in a directory."""
     app_settings = AppSettings.from_json(settings)
+    if denoise is not None:
+        _set_denoise(app_settings, detector, denoise)
     if min_tonality is not None:
         app_settings.detection.post.minTonality = min_tonality
     wav_files = sorted(wav_dir.glob("*.wav"))
@@ -265,7 +296,9 @@ def train_cnn_cmd(
         from squeak_peek.cnn.train import save_checkpoint, train_cnn
     except ImportError as e:
         raise click.ClickException(
-            "train-cnn needs torch/torchvision. Install with: pip install squeak-peek-studio[cnn]"
+            "train-cnn needs torch/torchvision, which are not installed in this "
+            f"Python environment ({sys.executable}). Install with: "
+            f'"{sys.executable}" -m pip install torch torchvision'
         ) from e
 
     if len(wav_paths) != len(label_paths):

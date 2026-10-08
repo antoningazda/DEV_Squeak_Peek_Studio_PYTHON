@@ -24,10 +24,10 @@ Train an ML or CNN detector when the classical detectors keep firing on a
 noise source specific to your setup.
 
 Whichever you pick, read [Tonality filtering](#tonality-filtering) — it is
-the cheapest large accuracy gain available. If the recordings themselves
-are noisy rather than the detections, see
-[Pre-detection denoising](#pre-detection-denoising), which cleans the audio
-the classical detectors see.
+the cheapest large accuracy gain available. PSD also needs
+[Pre-detection denoising](#pre-detection-denoising), which is on for it by
+default — on raw recordings its in-band noise floor costs most of its
+precision.
 
 ---
 
@@ -69,11 +69,12 @@ threshold in seconds, instead of hiding it in the detector's frame grid.
 | `segmentLength` | `8192` | STFT window length for the power spectrum |
 | `overlapFactor` | `0.59` | Fraction of each window overlapping the next |
 | `maWindow` | `3` | Moving-average smoothing of the power envelope (frames) |
-| `noiseWindow` | `120` | Moving-minimum window estimating the noise floor (frames) |
-| `localWindow` | `10` | Window for local mean/std in the adaptive threshold (frames) |
+| `noiseWindow` | `240` | Moving-minimum window estimating the noise floor (frames) |
+| `localWindow` | `194` | Window for local mean/std in the adaptive threshold (frames) |
 | `k` | `0.023` | Scales the local-statistics term of the threshold |
-| `w` | `3.0` | Weight on the local SNR term |
-| `minEffectivePower` | `3e-05` | Minimum mean power to accept a candidate |
+| `w` | `0.994` | Weight on the local SNR term |
+| `minEffectivePower` | `8.5e-05` | Minimum mean power to accept a candidate |
+| `denoise` | `true` | Run on [denoised](#pre-detection-denoising) audio |
 | `runWholeSignal` | `true` | Process the full signal; off restricts to an ROI |
 | `ROIstart` / `ROIlength` | `60` / `10` s | The ROI, used only when `runWholeSignal` is off |
 
@@ -151,10 +152,11 @@ fitted for this mode.
 | `wlen` | `0.008` s | Sliding analysis window for detecting statistical change |
 | `maWindow` | `7500` | Samples averaged to smooth the change statistic |
 | `thresholdMode` | `mean` | `mean` or `adaptive` (above) |
-| `noiseWindow` | `800000` | Moving-minimum window for the noise floor — **`adaptive` only** |
-| `localWindow` | `5000` | Window for local mean/std — **`adaptive` only** |
-| `k` | `15.0` | Scales the local-statistics term — **`adaptive` only** |
-| `w` | `300.0` | Weight on the local SNR term — **`adaptive` only** |
+| `noiseWindow` | `256` | Moving-minimum window for the noise floor — **`adaptive` only** |
+| `localWindow` | `256` | Window for local mean/std — **`adaptive` only** |
+| `k` | `0.023` | Scales the local-statistics term — **`adaptive` only** |
+| `w` | `0.994` | Weight on the local SNR term — **`adaptive` only** |
+| `denoise` | `false` | Run on [denoised](#pre-detection-denoising) audio — lowers BSCD's precision on the reference recordings |
 
 ### Tuning
 
@@ -178,44 +180,76 @@ run-up.
 ## RBD
 
 **Relative Bayesian Difference** (Recursive Bayesian Detector) — at each
-candidate boundary, fits an autoregressive model to the signal on the left
-and another on the right, and compares that piecewise model against a
-single-AR baseline using a Bayesian evidence ratio. A boundary where two
-separate models explain the data much better than one is a real change
-point.
+sample, fits one autoregressive (AR) model to the half-window on the left
+and another to the half-window on the right, and compares that piecewise
+model against a single AR model over the whole window. A point where two
+separate models explain the data much better than one is a change point.
 
-This is the most principled of the three classical detectors and gives the
-most precise boundaries. It is also the most expensive — it fits AR models
-across a sliding window — and has the most parameters.
+The pipeline:
+
+1. DC removal and amplitude normalisation.
+2. Zero-phase bandpass filter to `fcutMin`–`fcutMax` (order-12 IIR) —
+   `bandpass`, on by default.
+3. The change statistic: `4 · (ln res_single − ln(res_left + res_right))`,
+   the log ratio of the least-squares residual energies, at every sample.
+   Both systems are updated recursively as the window slides (a line-for-line
+   port of `RBD.m`, JIT-compiled with numba).
+4. Normalisation to its maximum and moving-average smoothing over
+   `smoothingWindowRBD`.
+5. Thresholding (`thresholdMode`) and edge detection.
+
+### Two departures from `RBDDetector.m`
+
+Both are switchable back to the MATLAB behaviour:
+
+| Parameter | Default | MATLAB | Why |
+|---|---|---|---|
+| `bandpass` | `true` | `false` | Without it the AR models are fitted to the full-band signal, where they mostly describe noise below the USV band |
+| `thresholdMode` | `median` | `original` | `original` thresholds relative to the statistic's **global maximum** (`dynamicScaling`, `amplitudeThreshold`), so one loud transient moves the threshold for the whole recording. `median` flags samples above `medianFactor` × the smoothed statistic's median, which the sparse calls barely move |
+
+On the reference recordings the bandpass alone took RBD from F1 ≈ 0.25–0.4
+to ≈ 0.7; the median threshold keeps that while being far less sensitive to
+the recording's loudest event. The defaults below were also checked for
+**label length**: the midpoint criterion used by
+[Metrics](guide/metrics.md) does not penalise over-long detections, so
+settings were chosen on both midpoint F1 and an overlap criterion
+(IoU ≥ 0.3). Longer windows and heavier smoothing score well on midpoints
+only because they stretch every detection.
 
 ### Parameters
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `wlen` | `0.02` s | Window compared on either side of each candidate boundary |
+| `wlen` | `0.02` s | Window compared on either side of each candidate boundary (MATLAB default `0.04`) |
 | `AR_order_left` | `4` | AR model order left of the boundary |
 | `AR_order_right` | `4` | AR model order right of the boundary |
-| `Bayesian_Evidence_order` | `4` | AR order for the baseline evidence |
-| `dynamicScaling` | `0.00015` | Scales the adaptive threshold relative to local statistics |
-| `smoothingWindowRBD` | `0.04` s | Smoothing of the detection statistic before thresholding |
-| `smoothingWindowThr` | `0.01` s | Smoothing of the adaptive threshold itself |
-| `amplitudeThreshold` | `0.01` | Minimum normalised amplitude for a candidate to be kept |
+| `Bayesian_Evidence_order` | `4` | AR order of the single-model baseline |
+| `bandpass` | `true` | Bandpass to `fcutMin`–`fcutMax` before fitting |
+| `thresholdMode` | `median` | `median` or `original` (above) |
+| `medianFactor` | `4.0` | Threshold as a multiple of the median — **`median` only** |
+| `smoothingWindowRBD` | `0.03` s | Smoothing of the statistic before thresholding (MATLAB default `0.02`) |
+| `dynamicScaling` | `0.3` | Scales the moving-mean threshold — **`original` only** |
+| `smoothingWindowThr` | `0.02` s | Smoothing of that threshold — **`original` only** |
+| `amplitudeThreshold` | `0.02` | Minimum normalised statistic — **`original` only** |
+| `denoise` | `false` | Run on [denoised](#pre-detection-denoising) audio — no gain once the bandpass is on |
 
 ### Tuning
 
-- **AR orders** are the model-complexity dial: higher orders capture more
-  complex spectral shape but need more data per window and more
-  computation. 4 is a sensible default for USV-band audio; going much above
-  8 rarely helps.
-- **`dynamicScaling`** is the main sensitivity control.
-- The two smoothing windows interact: smoothing the statistic more than the
-  threshold makes detection conservative, and vice versa. Change one at a
-  time.
-- If RBD is too slow, lengthen `wlen` before lowering the AR orders.
+- **`medianFactor`** is the main precision/recall dial: higher finds fewer,
+  more confident calls. The optimum on the reference recordings was flat
+  between 4 and 6.
+- **`wlen`** also sets how sharp the boundaries are: the statistic responds
+  within about `wlen`/2 of a change, so a longer window stretches every
+  detection.
+- **`smoothingWindowRBD`** merges a call's onset and offset peaks into one
+  detection; too short splits calls, too long merges neighbours.
+- **AR orders** are the model-complexity dial; 4 is a sensible default for
+  USV-band audio, and going much above 8 rarely helps.
+- RBD is the slowest detector (each sample updates several 8 × 8 systems).
+  If it is too slow, lengthen `wlen` before lowering the AR orders.
 
-Both smoothing windows use MATLAB's `movmean` convention, shrinking at the
-edges instead of padding, so the start and end of a recording are not
-systematically pushed below threshold.
+Smoothing follows MATLAB's `movmean` convention, shrinking at the edges
+instead of padding.
 
 ---
 
@@ -281,22 +315,32 @@ boxes that overlap across tile boundaries.
 
 ## Pre-detection denoising
 
-An optional stage **before** any classical detector runs, off by default.
-Turn it on with **Detection → Pre-processing → Denoise**, or
-`--denoise` on the [CLI](cli.md#detect).
+An optional stage that suppresses stationary background noise in the
+**audio** before a classical detector runs. It is a **per-detector**
+choice — each of PSD, BSCD and RBD has its own `denoise` parameter (also a
+checkbox per detector under **Detection → Pre-processing**) — because it
+helps one detector and hurts another:
+
+| Detector | `denoise` default | Effect on the reference recordings |
+|---|---|---|
+| PSD | **on** | Pooled F1 0.47 → 0.77; precision 0.35 → 0.85 |
+| BSCD | off | Pooled F1 0.75 → 0.62 (more false positives) |
+| RBD | off | No gain once RBD's own bandpass is on |
 
 ### The idea
 
 An ultrasonic recording is mostly background: fans, electronics, the
 microphone's own hiss. That background is roughly constant over a session,
 while the calls are sparse and brief — so each frequency bin's noise level
-can be estimated **from the recording itself**, as a low percentile of that
-bin's magnitude over time, and subtracted. It is spectral subtraction, the
-same idea as Audacity's Noise Reduction, with the noise profile taken
+can be estimated **from the recording itself**, as the median of that bin's
+magnitude over time, and subtracted. It is spectral subtraction, the same
+idea as Audacity's Noise Reduction, with the noise profile taken
 automatically instead of from a selection you make by hand.
 
-PSD and BSCD otherwise see that constant in-band noise as a large part of
-their envelope, which costs precision on quiet recordings.
+PSD sums band power, so on raw audio that constant in-band noise is most of
+its envelope, and its precision collapses. The PSD results in the original
+MATLAB thesis were obtained on recordings denoised beforehand; with this
+stage on, the Python PSD reaches the same F1 directly from raw recordings.
 
 ### How it works
 
@@ -315,44 +359,42 @@ their envelope, which costs precision on quiet recordings.
    output is the same length and sample rate as the input, so any detector
    runs on it unchanged.
 
+The denoised audio is computed once per recording and shared by every
+selected detector that wants it.
+
 ### Parameters
 
 [Settings → Pre-processing](guide/settings.md#pre-processing), stored under
-`Detection.PRE`:
+`Detection.PRE` and shared by every detector with `denoise` on:
 
 | Parameter | Default | What it does |
 |---|---|---|
-| `enabled` | `false` | The **Denoise** checkbox |
 | `nfft` | `1024` samples | STFT window for estimation and suppression |
-| `noisePercentile` | `20.0` | Percentile of each bin's magnitude taken as its noise level |
-| `oversubtraction` | `1.5` | Multiple of that level subtracted |
-| `maxReductionDb` | `18.0` dB | Largest attenuation any bin may receive |
+| `noisePercentile` | `50.0` | Percentile of each bin's magnitude taken as its noise level |
+| `oversubtraction` | `1.25` | Multiple of that level subtracted |
+| `maxReductionDb` | `30.0` dB | Largest attenuation any bin may receive |
+
+The defaults were chosen on the reference recordings for PSD; a lower
+percentile or a smaller `maxReductionDb` removes less noise.
 
 ### Scope
 
-- **Classical detectors only.** PSD, BSCD and RBD run on the denoised
-  audio. **ML** and **CNN** instead apply the denoising recorded in their
-  own model file at training time, so training and inference always see the
-  same kind of audio — which is also why their results do not change when
-  you tick the box.
+- **ML and CNN** ignore the per-detector checkboxes and apply the denoising
+  recorded in their own model file at training time (**Train detector →
+  Denoise the training audio**), so training and inference always see the
+  same kind of audio.
 - **Detection only.** Export, [Label Edit](guide/label-edit.md),
   sonification, the video soundtrack and
   [call-type classification](guide/classification.md) all use the original
   recording. Nothing you listen to, look at or ship is denoised.
 
-!!! warning "Retune after you enable it"
+!!! warning "Retune if you change it"
 
-    A detector's thresholds describe a particular noise level, and
-    denoising changes that level. Parameters fitted on raw audio are not
-    the right parameters for denoised audio — on paper it only removes
-    noise, but in practice the envelope it feeds the detector is both
-    quieter and flatter.
-
-    Either re-run **Detection → Train detector → Tune detector
-    parameters** with the checkbox in the state you intend to use (tuning
-    denoises first, so it fits what you will actually run), or score the
-    change against reference labels in [Metrics](guide/metrics.md) before
-    applying it to a dataset.
+    A detector's thresholds describe a particular noise level. Switching a
+    detector's `denoise` changes that level, so its other parameters are no
+    longer fitted — re-run **Detection → Train detector → Tune detector
+    parameters** (tuning applies the detector's `denoise` setting), or score
+    the change against reference labels in [Metrics](guide/metrics.md).
 
 ---
 
@@ -429,13 +471,13 @@ depends on your analysis. Two design choices limit the damage:
 audio ─▶ [Denoise] ─▶ detector ─▶ Filter Broadband ─▶ Merge Close Labels ─▶ Remove Short Labels ─▶ export
 ```
 
-Denoising is off by default and applies to the classical detectors only;
-the three post-processing steps run in the order shown, on every detector's
-output, before export.
+Denoising is a per-detector choice (on for PSD, off for BSCD and RBD by
+default; ML and CNN follow their model); the three post-processing steps run
+in the order shown, on every detector's output, before export.
 
 | Step | Setting | Default |
 |---|---|---|
-| Denoise | `Detection.PRE.enabled` | `false` (off) |
+| Denoise | each detector's `denoise` (algorithm: `Detection.PRE`) | PSD on, BSCD/RBD off |
 | Filter Broadband | `minTonality` | `0` (off) |
 | Merge Close Labels | `maxGapToMerge` | `0.005` s |
 | Remove Short Labels | `minLabelLength` | `0.001` s |

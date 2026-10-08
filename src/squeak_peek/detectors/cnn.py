@@ -10,6 +10,7 @@ duplicate detections from overlapping tiles.
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import numpy as np
@@ -75,6 +76,7 @@ class CNNDetector(AbstractDetector):
     """Faster R-CNN sliding-tile USV detector."""
 
     id = "CNN"
+    uses_pipeline_preprocessing = False  # applies its model's own denoising
     display_name = "CNN"
     description = (
         "Deep-learning (Faster R-CNN) detector predicting a time/frequency box per call. "
@@ -98,8 +100,9 @@ class CNNDetector(AbstractDetector):
                 from squeak_peek.cnn.train import load_checkpoint
             except ImportError as exc:
                 raise RuntimeError(
-                    "The CNN detector needs torch/torchvision. "
-                    "Install with: pip install squeak-peek-studio[cnn]"
+                    "The CNN detector needs torch/torchvision, which are not "
+                    f"installed in this Python environment ({sys.executable}). "
+                    f'Install with: "{sys.executable}" -m pip install torch torchvision'
                 ) from exc
             self._checkpoint = load_checkpoint(self.params.modelPath)
         return self._checkpoint
@@ -115,6 +118,10 @@ class CNNDetector(AbstractDetector):
         model = checkpoint["model"]
         device = checkpoint["device"]
         tp = checkpoint["tile_params"]
+        if tp.get("denoise"):
+            from squeak_peek.audio.denoise import DenoiseParams, preprocess
+
+            signal = preprocess(signal, fs, DenoiseParams.model_validate(tp["denoise"]))
 
         window_len = round(tp["window_s"] * fs)
         if window_len <= 0:

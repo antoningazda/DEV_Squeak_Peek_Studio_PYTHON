@@ -5,13 +5,29 @@ All notable user-facing changes to Squeak Peek Studio. Format loosely follows
 
 ## [Unreleased]
 
-- Added optional pre-detection denoising: stationary background noise is
-  estimated per frequency bin from the recording itself and subtracted
-  before the classical detectors run (Detection → Pre-processing, or
-  `--denoise` on the CLI). Detection only — export, review, sonification and
-  classification keep the original audio. ML/CNN models record the
-  denoising they were trained with and reapply it at inference, and
-  parameter tuning fits the denoised pipeline.
+- Added pre-detection denoising: stationary background noise is estimated
+  per frequency bin from the recording itself and subtracted before a
+  detector runs. It is a per-detector setting (`denoise`; a checkbox per
+  detector under Detection → Pre-processing, `--denoise/--no-denoise` on the
+  CLI) — **on for PSD by default**, off for BSCD and RBD, because on the
+  reference recordings it lifts PSD's pooled F1 from 0.47 to 0.77 but lowers
+  BSCD's. Detection only — export, review, sonification and classification
+  keep the original audio. ML/CNN models record the denoising they were
+  trained with ("Denoise the training audio") and reapply it at inference;
+  parameter tuning follows the tuned detector's setting.
+- PSD defaults restored to the original MATLAB values (`noiseWindow` 240,
+  `localWindow` 194, `w` 0.994, `minEffectivePower` 8.5e-5): the previous
+  shipped values were fitted around the old dB-floor bug and cut PSD's F1
+  roughly in half.
+- RBD: bandpass-filters to `fcutMin`–`fcutMax` before fitting its AR models
+  (`bandpass`, previously the band was ignored) and thresholds at
+  `medianFactor` × the statistic's median (`thresholdMode = "median"`)
+  instead of relative to its global maximum; both switchable back to the
+  MATLAB behaviour. New defaults `wlen` 0.02 s, `smoothingWindowRBD`
+  0.03 s, `medianFactor` 4, chosen on both midpoint and overlap (IoU ≥ 0.3)
+  F1 so that detections are not simply stretched. Pooled F1 on the
+  reference recordings rose from about 0.39 to 0.68 (midpoint) / 0.64
+  (IoU), with a mean detection length of 52 ms.
 - Added undo/redo for label edits (Edit menu, Ctrl+Z / Ctrl+Shift+Z),
   covering accept/reject, call-type corrections, boundary drags and manual
   labels, in both Label Edit and Visualization.

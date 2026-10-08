@@ -55,6 +55,9 @@ class SettingsTab(QWidget):
             (self._make_viz_tab(), "Visualization",
              "Spectrogram rendering, overlays and sonification for the Visualization tab."),
         ]
+        pre_tab, self._pre_widgets = self._make_plugin_tab(self._state.settings.detection.pre)
+        sub_tabs.append((pre_tab, "Pre-processing",
+             "Optional noise suppression applied to the audio before the classical detectors run."))
         for detector_cls in AbstractDetector.all():
             params = self._state.settings.detection.params_for(detector_cls.id)
             tab, widgets = self._make_plugin_tab(params)
@@ -811,8 +814,9 @@ class SettingsTab(QWidget):
             params_cls = AbstractClassifier.get(classifier_id).Params
             self._state.settings.classification.set_params(classifier_id, pf.read_params_form(params_cls, widgets))
 
-        # Post-processing / Detection export
+        # Pre-processing / Post-processing / Detection export
         detection = self._state.settings.detection
+        detection.pre = pf.read_params_form(type(detection.pre), self._pre_widgets)
         detection.export_path = self._det_export_path.text()
         post = detection.post
         post.maxGapToMerge  = self._post_gap.value()
@@ -940,8 +944,9 @@ class SettingsTab(QWidget):
         for classifier_id, widgets in self._classifier_widgets.items():
             pf.reload_params_form(self._state.settings.classification.params_for(classifier_id), widgets)
 
-        # Post-processing / Detection export
+        # Pre-processing / Post-processing / Detection export
         detection = self._state.settings.detection
+        pf.reload_params_form(detection.pre, self._pre_widgets)
         self._det_export_path.blockSignals(True)
         self._det_export_path.setText(detection.export_path)
         self._det_export_path.blockSignals(False)

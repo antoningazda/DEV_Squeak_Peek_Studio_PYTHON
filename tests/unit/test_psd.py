@@ -157,7 +157,7 @@ class TestPSDDetector:
         # All labels should have valid structure
         for label in labels:
             assert isinstance(label, Label)
-            assert label.start_time < label.end_time
+            assert label.start_time <= label.end_time  # single-frame events are kept, as in MATLAB
             assert label.start_time >= 0
             assert label.end_time <= duration
             assert label.label == "d"
@@ -181,7 +181,7 @@ class TestPSDDetector:
         for label in labels:
             assert isinstance(label, Label)
             # Sanity: start < end
-            assert label.start_time < label.end_time
+            assert label.start_time <= label.end_time  # single-frame events are kept, as in MATLAB
             # Within bounds
             assert 0 <= label.start_time <= duration_seconds
             assert 0 <= label.end_time <= duration_seconds
@@ -212,10 +212,11 @@ class TestPSDDetector:
 
         # Verify it runs and produces valid output
         assert isinstance(labels, list)
-        # All events must have positive duration
+        # No event may have negative duration (single-frame events, with
+        # start == end, are kept as in MATLAB's PSDDetector.m)
         for label in labels:
-            assert label.start_time < label.end_time, (
-                f"Event has zero or negative duration: "
+            assert label.start_time <= label.end_time, (
+                f"Event has negative duration: "
                 f"start={label.start_time}, end={label.end_time}"
             )
 

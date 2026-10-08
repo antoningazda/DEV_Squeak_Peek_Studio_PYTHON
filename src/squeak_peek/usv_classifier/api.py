@@ -93,8 +93,9 @@ def _require_torch() -> None:
         import torch  # noqa: F401
     except ImportError as exc:
         raise TorchMissingError(
-            "USV classification needs PyTorch. Install with: "
-            "pip install squeak-peek-studio[cnn]"
+            "USV classification needs PyTorch, which is not installed in "
+            f"this Python environment ({sys.executable}). Install with: "
+            f'"{sys.executable}" -m pip install torch torchvision'
         ) from exc
 
 

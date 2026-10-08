@@ -7,6 +7,7 @@ Tests the rbd() algorithm and RBDDetector class with both synthetic and real aud
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from squeak_peek.detectors.rbd import RBDDetector, RBDParams, rbd
 from squeak_peek.labels.model import Label
@@ -85,6 +86,36 @@ class TestRBDAlgorithm:
 
         assert np.allclose(ref, jit, rtol=1e-6, atol=1e-9)
 
+    def test_rbd_matches_least_squares_closed_form(self):
+        """The recursion must equal RBD.m's statistic computed per window from
+        scratch: at MATLAB index mm the left AR(M1) fit covers samples
+        mm-m+1..mm, the right AR(M2) fit mm+1..mm+m, the baseline AR(ME) fit
+        both, every row regressing on its true lags; R = 4*(ln res_E -
+        ln(res_L + res_R))."""
+        rng = np.random.default_rng(0)
+        n, okno, order = 1200, 120, 4
+        x = rng.normal(size=n)
+        for i in range(2, n):  # AR(2) whose coefficients change at n/2
+            a = (1.2, -0.5) if i < n // 2 else (-0.3, 0.4)
+            x[i] += a[0] * x[i - 1] + a[1] * x[i - 2]
+        out = rbd(x, okno, order, order, order)
+
+        sig = x / np.max(np.abs(x))
+        m = okno // 2
+
+        def residual(rows):
+            a = np.array([[sig[r - 1 - k] for k in range(order)] for r in rows])
+            coef, *_ = np.linalg.lstsq(a, sig[rows], rcond=None)
+            e = sig[rows] - a @ coef
+            return e @ e
+
+        # Skip the start-up rows, whose lags RBD.m zero-pads.
+        for mm in range(okno + 10, n - m + 1, 7):
+            left, right = list(range(mm - m, mm)), list(range(mm, mm + m))
+            expected = 4 * (np.log(residual(left + right)) - np.log(residual(left) + residual(right)))
+            assert out[mm - 1] == pytest.approx(expected, abs=1e-8)
+        assert abs(int(np.argmax(out)) - n // 2) <= 2
+
     def test_rbd_numba_matches_reference_on_real_audio_slice(
         self, example_audio: tuple[np.ndarray, int]
     ):
@@ -101,7 +132,9 @@ class TestRBDAlgorithm:
         ref = rbd(sig, window_length, 4, 4, 4, use_numba=False)
         jit = rbd(sig, window_length, 4, 4, 4, use_numba=True)
 
-        assert np.allclose(ref, jit, rtol=1e-3, atol=1e-6)
+        # Absolute tolerance relative to the statistic's range: near-zero
+        # samples carry ~1e-6 of rounding drift that a relative check inflates.
+        assert np.allclose(ref, jit, rtol=1e-3, atol=1e-4 * np.max(np.abs(ref)))
 
     def test_rbd_numba_runtime_on_longer_real_slice(
         self, example_audio: tuple[np.ndarray, int]
@@ -313,3 +346,42 @@ class TestRBDIntegration:
         # Real USV data should typically have some detections
         # (if not, at least verify the detector ran)
         print(f"Found {len(labels)} detections in {max_time:.2f}s audio slice")
+
+
+class TestRBDImprovements:
+    """Bandpass + median threshold (the defaults) vs RBDDetector.m's rules."""
+
+    @staticmethod
+    def _calls_in_noise(fs: int = 250_000):
+        rng = np.random.default_rng(3)
+        x = rng.normal(size=fs) * 0.02 + np.cumsum(rng.normal(size=fs)) * 1e-3  # hiss + low-freq drift
+        t = np.arange(int(0.03 * fs)) / fs
+        starts = (0.2, 0.5, 0.8)
+        for s in starts:
+            i = int(s * fs)
+            x[i:i + len(t)] += 0.3 * np.sin(2 * np.pi * (55_000 * t + 2e5 * t ** 2))  # 30 ms FM sweep
+        return x, fs, starts
+
+    def test_defaults_find_calls(self):
+        x, fs, starts = self._calls_in_noise()
+        labels = RBDDetector(RBDParams()).detect(x, fs)
+        for s in starts:
+            mid = s + 0.015
+            assert any(lb.start_time <= mid <= lb.end_time for lb in labels), f"missed call at {s}s"
+
+    def test_original_mode_is_matlab_rule(self):
+        """bandpass=False + thresholdMode='original' must reproduce RBDDetector.m."""
+        x, fs, _ = self._calls_in_noise()
+        p = RBDParams(bandpass=False, thresholdMode="original")
+        labels = RBDDetector(p).detect(x, fs)
+
+        from squeak_peek.audio.filters import movmean
+
+        sig = (x - x.mean()) / np.max(np.abs(x - x.mean()))
+        out = rbd(sig, round(p.wlen * fs), 4, 4, 4)
+        out = out / np.max(np.abs(out))
+        sm = movmean(out, round(p.smoothingWindowRBD * fs))
+        thr = movmean(sm, round(p.smoothingWindowThr * fs)) * p.dynamicScaling
+        b = (sm > thr) & (sm > p.amplitudeThreshold)
+        e = np.diff(np.concatenate([[0], b.astype(int), [0]]))
+        assert [lb.start_index for lb in labels] == list(np.where(e == 1)[0])

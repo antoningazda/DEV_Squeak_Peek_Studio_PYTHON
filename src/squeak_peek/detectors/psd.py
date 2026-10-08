@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from pydantic import BaseModel, Field
 
-from squeak_peek.audio.filters import bandpass_filter_filtfilt, compute_stft
+from squeak_peek.audio.filters import bandpass_filter_filtfilt
 from squeak_peek.detectors.base import AbstractDetector
 
 if TYPE_CHECKING:
@@ -44,6 +44,14 @@ class PSDParams(BaseModel):
         json_schema_extra={
             "unit": "Hz", "group": "freq_band",
             "caption": "Frequencies outside [fcutMin, fcutMax] are ignored when computing signal power.",
+        },
+    )
+    denoise: bool = Field(
+        True,
+        description="Suppress stationary background noise before this detector runs.",
+        json_schema_extra={
+            "caption": "Recommended: in-band noise otherwise inflates the power envelope and costs most of PSD's precision. Noise-suppression settings: Settings → Pre-processing. "
+                       "Export, review and classification always keep the original audio.",
         },
     )
     ROIstart: float = Field(
@@ -180,20 +188,33 @@ class PSDDetector(AbstractDetector):
             x_roi, fs, p.fcutMin, p.fcutMax, order=12
         )
 
-        # ── STFT with Hamming window ─────────────────────────────────────
-        frequencies, times, Sxx = compute_stft(
+        # ── STFT with Hamming window (MATLAB: spectrogram(x, hamming(L),
+        #    round(L*overlap), L, fs)) ─────────────────────────────────────
+        from scipy.signal import spectrogram as _sp_spectrogram
+
+        frequencies, times, Sxx = _sp_spectrogram(
             x_roi,
-            fs,
-            p.segmentLength,
-            p.overlapFactor,
-            window="hamming",  # MATLAB uses hamming() for PSD
+            fs=fs,
+            window="hamming",
+            nperseg=p.segmentLength,
+            noverlap=int(round(p.segmentLength * p.overlapFactor)),
+            nfft=p.segmentLength,
+            scaling="spectrum",
+            mode="psd",
+            detrend=False,
         )
 
         # ── Power envelope within the frequency band ─────────────────────
+        # MATLAB: sum(abs(S(freqMask,:)).^2, 1), normalised to its maximum.
+        # Summed directly from the power spectrum — no round trip through dB,
+        # whose +eps floor would bias the envelope (and the noise floor, and
+        # so the SNR term of the threshold) on quiet recordings.
         freq_mask = (frequencies >= p.fcutMin) & (frequencies <= p.fcutMax)
-        # Sum squared magnitudes across frequency (power), then normalize
-        power_envelope = np.sum(np.power(10.0, Sxx[freq_mask, :] / 10.0), axis=0)
-        power_envelope = power_envelope / np.max(power_envelope)
+        power_envelope = np.sum(Sxx[freq_mask, :], axis=0)
+        max_power = np.max(power_envelope) if power_envelope.size else 0.0
+        if max_power <= 0:
+            return []
+        power_envelope = power_envelope / max_power
 
         # ── Smoothing (moving average) ───────────────────────────────────
         power_envelope = self._movmean(power_envelope, p.maWindow)
@@ -227,9 +248,8 @@ class PSDDetector(AbstractDetector):
         # ── Create labels for each event ─────────────────────────────────
         labels: list[Label] = []
         for start_idx, end_idx in zip(starts, ends):
-            # Skip zero-duration events (start_idx == end_idx)
-            if start_idx >= end_idx:
-                continue
+            # Single-frame events (start_idx == end_idx) are kept, as in
+            # PSDDetector.m; Remove Short Labels drops them if enabled.
 
             # Check minimum effective power criterion
             mean_power = np.mean(effective_envelope[start_idx : end_idx + 1])

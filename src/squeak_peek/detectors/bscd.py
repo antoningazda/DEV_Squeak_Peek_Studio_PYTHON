@@ -10,9 +10,9 @@ from __future__ import annotations
 import numpy as np
 from numba import njit
 from pydantic import BaseModel, Field
-from scipy.ndimage import minimum_filter1d, uniform_filter1d
+from scipy.ndimage import minimum_filter1d
 
-from squeak_peek.audio.filters import bandpass_filter_filtfilt
+from squeak_peek.audio.filters import bandpass_filter_filtfilt, movmean
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.labels.model import Label
 
@@ -30,6 +30,14 @@ class BSCDParams(BaseModel):
         description="Upper bound of the frequency band the BSCD detector analyses.",
         json_schema_extra={"unit": "Hz", "group": "freq_band"},
     )
+    denoise: bool = Field(
+        False,
+        description="Suppress stationary background noise before this detector runs.",
+        json_schema_extra={
+            "caption": "Off by default: the mean threshold is tuned on raw audio and denoising lowers precision. Noise-suppression settings: Settings → Pre-processing. "
+                       "Export, review and classification always keep the original audio.",
+        },
+    )
     wlen: float = Field(
         0.01, ge=0.0, le=1.0,
         description="Length of the sliding analysis window used to detect abrupt changes in signal statistics.",
@@ -38,6 +46,16 @@ class BSCDParams(BaseModel):
     maWindow: int = Field(
         5_000, ge=1, le=2_000_000,
         description="Number of frames averaged to smooth the change-detection statistic.",
+    )
+    thresholdMode: str = Field(
+        "mean",
+        description="How the smoothed BSCD statistic is thresholded.",
+        json_schema_extra={
+            "choices": ["mean", "adaptive"],
+            "caption": "'mean' = one global threshold at the statistic's mean (the original MATLAB "
+                       "detector); 'adaptive' = local noise floor + SNR-weighted threshold driven by "
+                       "noiseWindow/localWindow/k/w, which are ignored in 'mean' mode.",
+        },
     )
     noiseWindow: int = Field(
         256, ge=1, le=2_000_000,
@@ -63,298 +81,192 @@ class BSCDParams(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Numba-compiled core: inline 2x2 matrix operations for performance
+# Numba-compiled core: literal port of bscd.m (Cmejla2013)
 # ─────────────────────────────────────────────────────────────────────────────
 
+_TINY = 1e-300
 
-@njit
-def _inv_2x2(a: float, b: float, c: float, d: float) -> tuple[float, float, float, float]:
+
+@njit(cache=True)
+def _log10_abs(x: float) -> float:
+    """MATLAB's real(log10(x)): log10|x|, guarded against an exact zero."""
+    return np.log10(np.abs(x) + _TINY)
+
+
+@njit(cache=True)
+def _bscd_inner(sig: np.ndarray, okno: int) -> np.ndarray:
     """
-    Compute inline 2x2 matrix inverse: [[a, b], [c, d]] -> inv.
+    Line-for-line port of bscd.m's sliding-window recursion.
 
-    Returns the four elements of the inverse as (a', b', c', d').
-    det = a*d - b*c, so inv = (1/det) * [[d, -b], [-c, a]]
+    Two linear models are compared over an ``okno``-sample window centred on
+    each sample: a two-level mean (step at the window centre, the "cit"/"jm"
+    terms) and a single mean (the Bayesian-evidence baseline, "evid"). Both
+    inverses are updated by rank-1 (Sherman-Morrison) steps as the window
+    slides, so the cost is linear in len(sig).
 
-    Raises RuntimeError if determinant is (near-)zero.
+    ``sig`` must already be normalised to max(|sig|) == 1 (bscd.m does this
+    itself; see :func:`bscd`). Indices in the comments are MATLAB's 1-based
+    ones; positions the MATLAB loop never writes stay 0, as there.
     """
-    det = a * d - b * c
-    if np.abs(det) < 1e-15:
-        # Return identity to avoid division by zero; algorithm will degrade gracefully
-        return 1.0, 0.0, 0.0, 1.0
-    inv_det = 1.0 / det
-    return inv_det * d, inv_det * (-b), inv_det * (-c), inv_det * a
+    L = sig.shape[0]
+    N = okno
+    m = okno // 2
+    p2 = np.zeros(L)
+    if L < okno or L - m < m + 1:
+        return p2
 
+    # ---- initialisation over data = sig(1:okno) ----
+    # G(j,:) = [1 0] for j <= m, [0 1] for j > m  ->  GTG = diag(m, N-m)
+    D = 0.0
+    chi0 = 0.0
+    chi1 = 0.0
+    for j in range(okno):
+        D += sig[j] * sig[j]
+        if j < m:
+            chi0 += sig[j]
+        else:
+            chi1 += sig[j]
+    g00 = float(m)
+    g11 = float(N - m)
+    fi00 = 1.0 / g00
+    fi01 = 0.0
+    fi10 = 0.0
+    fi11 = 1.0 / g11
+    DELTA = g00 * g11
 
-@njit
-def _matmul_2x2_1col(a00: float, a01: float, a10: float, a11: float, b0: float, b1: float) -> tuple[float, float]:
-    """
-    Multiply 2x2 matrix by 2x1 column vector: [[a00, a01], [a10, a11]] @ [[b0], [b1]].
+    cit = ((-N + 2.0) / 2.0) * _log10_abs(D - (chi0 * (fi00 * chi0 + fi01 * chi1) + chi1 * (fi10 * chi0 + fi11 * chi1)))
+    jm = 0.5 * _log10_abs(DELTA)
 
-    Returns the result as a tuple (c0, c1).
-    """
-    return a00 * b0 + a01 * b1, a10 * b0 + a11 * b1
-
-
-def _safe_log10(x: float) -> float:
-    """Safely compute log10, handling edge cases."""
-    if x <= 0:
-        return -100.0  # Large negative value instead of -inf
-    return np.log10(x)
-
-
-@njit
-def _bscd_inner(signal: np.ndarray, window_samples: int) -> np.ndarray:
-    """
-    Core BSCD per-sample Bayesian evidence computation with numba JIT.
-
-    Performs a sliding window update on the Bayesian evidence for each sample,
-    using rank-1 matrix updates (Sherman-Morrison formula) to avoid expensive
-    matrix inversions on every iteration.
-
-    Parameters
-    ----------
-    signal : np.ndarray, shape (N,)
-        Bandpass-filtered, squared signal (DC removed and normalized)
-    window_samples : int
-        Window length in samples (e.g. fs * wlen)
-
-    Returns
-    -------
-    np.ndarray, shape (N,)
-        Evidence score at each sample (higher = more likely change point)
-    """
-    N = len(signal)
-    p2 = np.zeros(N)
-
-    # ─── Initialization (first window) ─────────────────────────────────────
-    m = window_samples // 2
-
-    # Setup G matrix: [1, 0] for first half, [0, 1] for second half
-    G = np.zeros((window_samples, 2))
-    for j in range(m):
-        G[j, 0] = 1.0
-    for j in range(m, window_samples):
-        G[j, 1] = 1.0
-
-    # Initialize statistics from first window
-    data = signal[:window_samples]
-    D = np.sum(data * data)
-
-    # Model 1: 2-parameter model (intercept, slope)
-    CHI = np.zeros(2)
-    for j in range(window_samples):
-        CHI[0] += data[j] * G[j, 0]
-        CHI[1] += data[j] * G[j, 1]
-
-    GTG = np.zeros((2, 2))
-    for i in range(2):
-        for j in range(2):
-            for k in range(window_samples):
-                GTG[i, j] += G[k, i] * G[k, j]
-
-    # Matrix inverse for model 1
-    fi00, fi01, fi10, fi11 = _inv_2x2(GTG[0, 0], GTG[0, 1], GTG[1, 0], GTG[1, 1])
-    delta = GTG[0, 0] * GTG[1, 1] - GTG[0, 1] * GTG[1, 0]
-
-    # Compute evidence for model 1 at initialization
-    chi_fi_chi = (
-        CHI[0] * (fi00 * CHI[0] + fi01 * CHI[1])
-        + CHI[1] * (fi10 * CHI[0] + fi11 * CHI[1])
-    )
-    numerator = D - chi_fi_chi
-    if numerator <= 0:
-        numerator = 1e-12
-    cit = ((-window_samples + 1.0 + 1.0) / 2.0) * np.log10(numerator)
-    if delta <= 0:
-        delta = 1e-12
-    jm = 0.5 * np.log10(np.abs(delta))
-
-    # Model 2: 1-parameter model (intercept only)
-    CHI_E = 0.0
-    for j in range(window_samples):
-        CHI_E += data[j]
-
-    GTG_E = float(window_samples)
-    fi_e = 1.0 / GTG_E
-    delta_e = GTG_E
-
-    FTF = CHI_E * fi_e * CHI_E
-    B = fi_e * CHI_E
+    chi_e = chi0 + chi1
+    fi_e = 1.0 / N
+    DELTA_E = float(N)
+    B = fi_e * chi_e
     BTB = B * B
-
-    # gamma(0.5) = sqrt(pi) ≈ 1.7724538509055159
-    sqrt_pi = np.sqrt(np.pi)
-
-    E1 = (-window_samples / 2.0) * np.log10(np.pi)
-    E2 = -0.5 * np.log10(delta_e)
-    E3 = np.log10(sqrt_pi)  # log10(gamma(0.5))
-    E5 = -(window_samples - 1.0) / 2.0 * np.log10(max(D - FTF, 1e-12))
-    E6 = -0.5 * 1.0 * np.log10(max(np.abs(BTB), 1e-12))
+    FTF = chi_e * fi_e * chi_e
+    E1 = (-N / 2.0) * np.log10(np.pi)
+    E2 = -0.5 * _log10_abs(DELTA_E)
+    E3 = np.log10(np.sqrt(np.pi))  # log10(gamma(1/2))
+    E5 = -((N - 1.0) / 2.0) * _log10_abs(D - FTF)
+    E6 = -0.5 * _log10_abs(BTB)
     evid = E1 + E2 + E3 + E5 + E6
+    p2[m - 1] = cit - jm - evid  # p2(m)
 
-    p2[m] = cit - jm - evid
-
-    # ─── Main loop: sliding window updates ────────────────────────────────
-    for mm in range(m + 1, N - m):
-        # Add new sample at position mm+m
-        d2 = signal[mm + m]
-        d2_sq = d2 * d2
-
-        D = D + d2_sq
-
-        # Model 1: rank-1 update for add operation (G2 = [0, 1], bscd.m line 77)
-        CHI[1] += d2 * 1.0  # G2[0] = 0 (CHI[0] unchanged), G2[1] = 1
-
-        # Sherman-Morrison for add: FI = FI - W @ inv(LAMBDA) @ W^T
-        # where W = FI @ G2^T = FI[:, 1], LAMBDA = 1 + G2 @ W = 1 + W[1]
+    # ---- main loop: mm = m+1 .. L-m (MATLAB, inclusive) ----
+    for mm in range(m + 1, L - m + 1):
+        # pridani novych dat: d2 = sig(mm+m), G2 = [0 1]
+        d2 = sig[mm + m - 1]
+        D += d2 * d2
+        chi1 += d2
         w0 = fi01
         w1 = fi11
-        lambda_add = 1.0 + w1
-        delta = delta * lambda_add
-        inv_lambda = 1.0 / lambda_add
-        fi00 -= w0 * inv_lambda * w0
-        fi01 -= w0 * inv_lambda * w1
-        fi10 -= w1 * inv_lambda * w0
-        fi11 -= w1 * inv_lambda * w1
+        lam = 1.0 + w1
+        DELTA *= lam
+        fi00 -= w0 * w0 / lam
+        fi01 -= w0 * w1 / lam
+        fi10 -= w1 * w0 / lam
+        fi11 -= w1 * w1 / lam
+        chi_e += d2
+        lam_e = 1.0 + fi_e
+        DELTA_E *= lam_e
+        fi_e -= fi_e * fi_e / lam_e
 
-        # Model 2: rank-1 update for add
-        CHI_E += d2
-        w_e = fi_e * 1.0
-        lambda_e = 1.0 + 1.0 * w_e
-        delta_e = delta_e * lambda_e
-        fi_e -= w_e * (1.0 / lambda_e) * w_e
+        # vlozeni nul: drop sig(mm-m), Z = [1 0]
+        old = sig[mm - m - 1]
+        D -= old * old
+        chi0 -= old
+        w0 = fi00
+        w1 = fi10
+        lam = 1.0 - w0
+        DELTA *= lam
+        fi00 += w0 * w0 / lam
+        fi01 += w0 * w1 / lam
+        fi10 += w1 * w0 / lam
+        fi11 += w1 * w1 / lam
+        chi_e -= old
+        lam_e = 1.0 - fi_e
+        DELTA_E *= lam_e
+        fi_e += fi_e * fi_e / lam_e
 
-        # Remove old sample at position mm-m
-        d_old = signal[mm - m]
-        d_old_sq = d_old * d_old
-
-        D = D - d_old_sq
-
-        # Model 1: rank-1 update for remove: FI = FI + (1/LAMBDA) @ W @ W^T
-        # where W = FI @ Z^T, LAMBDA = 1 - Z @ W
-        z0 = 1.0  # only first model component removes
-        z1 = 0.0
-        w0 = fi00 * z0 + fi01 * z1
-        w1 = fi10 * z0 + fi11 * z1
-        lambda_remove = 1.0 - z0 * w0 - z1 * w1
-        delta = delta * lambda_remove
-        inv_lambda = 1.0 / lambda_remove
-        fi00 += inv_lambda * w0 * w0
-        fi01 += inv_lambda * w0 * w1
-        fi10 += inv_lambda * w1 * w0
-        fi11 += inv_lambda * w1 * w1
-
-        # Update CHI
-        CHI[0] -= d_old * z0
-        CHI[1] -= d_old * z1
-
-        # Model 2: rank-1 update for remove
-        z_e = 1.0
-        w_e = fi_e * z_e
-        lambda_e_remove = 1.0 - z_e * w_e
-        delta_e = delta_e * lambda_e_remove
-        fi_e += (1.0 / lambda_e_remove) * w_e * w_e
-        CHI_E -= d_old
-
-        # Shift m position: move from first model to second model
-        # Remove first model contribution
-        r0 = 0.0
-        r1 = 1.0
-        w0 = fi00 * r0 + fi01 * r1
-        w1 = fi10 * r0 + fi11 * r1
-        lambda_shift1 = 1.0 - r0 * w0 - r1 * w1
-        delta = delta * lambda_shift1
-        inv_lambda = 1.0 / lambda_shift1
-        fi00 += inv_lambda * w0 * w0
-        fi01 += inv_lambda * w0 * w1
-        fi10 += inv_lambda * w1 * w0
-        fi11 += inv_lambda * w1 * w1
-        CHI[0] -= signal[mm] * r0
-        CHI[1] -= signal[mm] * r1
-
-        # Add to second model
-        q0 = 1.0
-        q1 = 0.0
-        w0 = fi00 * q0 + fi01 * q1
-        w1 = fi10 * q0 + fi11 * q1
-        lambda_shift2 = 1.0 + q0 * w0 + q1 * w1
-        delta = delta * lambda_shift2
-        inv_lambda = 1.0 / lambda_shift2
-        fi00 -= inv_lambda * w0 * w0
-        fi01 -= inv_lambda * w0 * w1
-        fi10 -= inv_lambda * w1 * w0
-        fi11 -= inv_lambda * w1 * w1
-        CHI[0] += signal[mm] * q0
-        CHI[1] += signal[mm] * q1
-
-        # Compute evidence
-        chi_fi_chi = (
-            CHI[0] * (fi00 * CHI[0] + fi01 * CHI[1])
-            + CHI[1] * (fi10 * CHI[0] + fi11 * CHI[1])
-        )
-        numerator = D - chi_fi_chi
-        if numerator <= 0:
-            numerator = 1e-12
-        cit = ((-window_samples + 1.0 + 1.0) / 2.0) * np.log10(numerator)
-        if delta <= 0:
-            delta_safe = 1e-12
-        else:
-            delta_safe = delta
-        jm = 0.5 * np.log10(np.abs(delta_safe))
-
-        # Model 2
-        B = fi_e * CHI_E
+        B = fi_e * chi_e
         BTB = B * B
-        FTF = CHI_E * fi_e * CHI_E
-
-        E1 = (-window_samples / 2.0) * np.log10(np.pi)
-        E2 = -0.5 * np.log10(delta_e)
-        E3 = np.log10(sqrt_pi)  # log10(gamma(0.5))
-        E5 = -(window_samples - 1.0) / 2.0 * np.log10(max(D - FTF, 1e-12))
-        E6 = 0.5 * 1.0 * np.log10(max(np.abs(BTB), 1e-12))
+        FTF = chi_e * fi_e * chi_e
+        E2 = -0.5 * _log10_abs(DELTA_E)
+        E5 = -((N - 1.0) / 2.0) * _log10_abs(D - FTF)
+        E6 = 0.5 * _log10_abs(BTB)
         evid = E1 + E2 + E3 + E5 - E6
 
-        p2[mm] = cit - jm - evid
+        # posunuti pozice m+1: sig(mm) moves from the right to the left mean
+        cur = sig[mm - 1]
+        chi1 -= cur  # R = [0 1]
+        w0 = fi01
+        w1 = fi11
+        lam = 1.0 - w1
+        DELTA *= lam
+        fi00 += w0 * w0 / lam
+        fi01 += w0 * w1 / lam
+        fi10 += w1 * w0 / lam
+        fi11 += w1 * w1 / lam
+        chi0 += cur  # Q = [1 0]
+        w0 = fi00
+        w1 = fi10
+        lam = 1.0 + w0
+        DELTA *= lam
+        fi00 -= w0 * w0 / lam
+        fi01 -= w0 * w1 / lam
+        fi10 -= w1 * w0 / lam
+        fi11 -= w1 * w1 / lam
 
-    # Normalize output: min-shift and threshold to zero
-    valid_idx = np.isfinite(p2)
-    if np.any(valid_idx):
-        min_p2 = np.min(p2[valid_idx])
-        out = p2 - min_p2
-    else:
-        out = p2
+        cit = ((-N + 2.0) / 2.0) * _log10_abs(
+            D - (chi0 * (fi00 * chi0 + fi01 * chi1) + chi1 * (fi10 * chi0 + fi11 * chi1))
+        )
+        jm = 0.5 * _log10_abs(DELTA)
+        p2[mm - 1] = cit - jm - evid
 
-    out = np.maximum(out, 0.0)
-    # Replace any remaining non-finite values with 0
-    out[~np.isfinite(out)] = 0.0
-
+    # x = find(p2); minp = min(p2(x)); out = p2 - minp; out = out .* (out > 0)
+    found = False
+    minp = 0.0
+    for i in range(L):
+        if p2[i] != 0.0 and np.isfinite(p2[i]):
+            if not found or p2[i] < minp:
+                minp = p2[i]
+                found = True
+    out = np.zeros(L)
+    for i in range(L):
+        v = p2[i] - minp
+        if np.isfinite(v) and v > 0.0:
+            out[i] = v
     return out
 
 
 def bscd(signal: np.ndarray, window_samples: int) -> np.ndarray:
     """
-    Bayesian Sequential Change Detection (BSCD) analysis.
+    Bayesian Sequential Change Detection (BSCD) statistic — port of bscd.m.
 
-    Detects change points in a signal using Bayesian evidence of model fit.
-    Implements the algorithm from Cmejla2013.
+    Implements the changepoint evidence of Cmejla et al. (2013): for every
+    sample, log10 Bayesian evidence of a step in the mean at the centre of a
+    ``window_samples``-long window versus a constant mean, shifted so its
+    minimum over the computed samples is 0 and clipped at 0.
 
     Parameters
     ----------
     signal : np.ndarray, shape (N,)
-        Normalized audio signal (typically bandpass-filtered, squared).
-        Should be pre-normalized by DC-removal and division by max(abs()).
+        Typically the squared, bandpass-filtered audio. Normalised to
+        max(|signal|) == 1 here, exactly as bscd.m does.
     window_samples : int
-        Analysis window length in samples.
-        Typical range: fs * wlen (e.g. 250000 * 0.01 = 2500 for 250kHz, 0.01s window).
+        Analysis window length in samples (e.g. fs * wlen).
 
     Returns
     -------
     np.ndarray, shape (N,)
-        Bayesian evidence score at each sample.
-        Higher values indicate stronger evidence of a change point.
+        Non-negative evidence score per sample (0 where the window does not fit).
     """
-    return _bscd_inner(signal, window_samples)
+    sig = np.asarray(signal, dtype=np.float64).ravel()
+    max_val = np.max(np.abs(sig)) if sig.size else 0.0
+    if max_val > 0:
+        sig = sig / max_val
+    return _bscd_inner(sig, int(window_samples))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -423,25 +335,12 @@ class BSCDDetector(AbstractDetector):
         # Moving average smoothing
         bscd_smoothed = self._moving_average(bscd_out, self.params.maWindow)
 
-        # ─── Adaptive thresholding and event extraction ─────────────────────
-        # A single global-mean threshold (the original MATLAB behavior) puts
-        # the cut well inside the bulk of the (left-skewed) evidence trace,
-        # flagging the majority of the recording as "on". Use the same
-        # local-noise-floor + SNR-weighted scheme PSDDetector uses instead,
-        # driven by the (previously unused) noiseWindow/localWindow/k/w params.
-        noise_window = max(1, int(self.params.noiseWindow))
-        local_window = max(1, int(self.params.localWindow))
-
-        noise_floor = minimum_filter1d(bscd_smoothed, size=noise_window, mode="nearest")
-        effective = np.maximum(bscd_smoothed - noise_floor, 0.0)
-        local_snr = np.minimum(effective / (noise_floor + np.finfo(float).eps), 10.0)
-
-        local_mean = self._moving_average(effective, local_window)
-        local_mean_sq = self._moving_average(effective**2, local_window)
-        local_std = np.sqrt(np.maximum(local_mean_sq - local_mean**2, 0.0))
-
-        threshold = (local_mean + self.params.k * local_std) / (1.0 + self.params.w * local_snr)
-        binary = effective > threshold
+        # ─── Thresholding ──────────────────────────────────────────────────
+        if self.params.thresholdMode == "adaptive":
+            binary = self._adaptive_binary(bscd_smoothed)
+        else:
+            # BSCDDetector.m: optimalThreshold = mean(powerEnvelope)
+            binary = bscd_smoothed > np.mean(bscd_smoothed)
 
         # Find transitions (0->1 and 1->0)
         binary_padded = np.concatenate(([0], binary.astype(int), [0]))
@@ -453,7 +352,7 @@ class BSCDDetector(AbstractDetector):
         time_axis = np.arange(len(signal)) / fs
         labels = []
         for start_idx, end_idx in zip(start_indices, end_indices):
-            if start_idx < end_idx < len(time_axis):
+            if start_idx <= end_idx < len(time_axis):
                 label = Label(
                     start_time=time_axis[start_idx],
                     end_time=time_axis[end_idx],
@@ -465,17 +364,28 @@ class BSCDDetector(AbstractDetector):
 
         return labels
 
+    def _adaptive_binary(self, smoothed: np.ndarray) -> np.ndarray:
+        """Local noise floor + SNR-weighted threshold, the same scheme
+        PSDDetector uses, driven by noiseWindow/localWindow/k/w. Not in the
+        MATLAB original, which declared these parameters but thresholded at
+        the global mean."""
+        noise_window = max(1, int(self.params.noiseWindow))
+        local_window = max(1, int(self.params.localWindow))
+
+        noise_floor = minimum_filter1d(smoothed, size=noise_window, mode="nearest")
+        effective = np.maximum(smoothed - noise_floor, 0.0)
+        local_snr = np.minimum(effective / (noise_floor + np.finfo(float).eps), 10.0)
+
+        local_mean = self._moving_average(effective, local_window)
+        local_mean_sq = self._moving_average(effective**2, local_window)
+        local_std = np.sqrt(np.maximum(local_mean_sq - local_mean**2, 0.0))
+
+        threshold = (local_mean + self.params.k * local_std) / (1.0 + self.params.w * local_snr)
+        return effective > threshold
+
     @staticmethod
     def _moving_average(signal: np.ndarray, window: int) -> np.ndarray:
-        """Apply centered moving average smoothing.
-
-        Uses scipy's O(N) sliding-window mean (uniform_filter1d) rather than
-        np.convolve, whose O(N * window) cost is impractical here: BSCD's
-        traces are one sample per audio sample (tens of millions of points),
-        so an O(N * window) convolution with a multi-thousand-sample kernel
-        (maWindow) would take minutes per file.
-        """
-        if window <= 1:
-            return signal.copy()
-
-        return uniform_filter1d(signal, size=int(window), mode="nearest")
+        """Centered moving average, MATLAB smoothdata('movmean') convention
+        (edges shrink rather than pad). O(N), which matters here: BSCD's
+        traces have one point per audio sample (tens of millions of points)."""
+        return movmean(signal, window)

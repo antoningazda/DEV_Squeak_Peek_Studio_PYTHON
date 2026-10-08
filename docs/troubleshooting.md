@@ -85,18 +85,20 @@ In order of effect:
    applies in `adaptive`
    [threshold mode](methods.md#threshold-mode); in the default `mean` mode
    raise `maWindow` instead.
-3. Raise `minEffectivePower` (PSD) or `amplitudeThreshold` (RBD).
+3. Raise `minEffectivePower` (PSD) or `medianFactor` (RBD).
 4. Raise **Min label length** in post-processing.
-5. If the background itself is the problem rather than any one setting, try
-   **Pre-processing → Denoise** and then re-tune — see
+5. If the background itself is the problem rather than any one setting,
+   check that the detector's **Pre-processing** denoise box is ticked (it is
+   for PSD by default) and then re-tune — see
    [pre-detection denoising](methods.md#pre-detection-denoising).
 
 ### The detector fires on the room, not the animal
 
 A constant fan, pump or electronics whine sits in the band all session and
-raises every energy-based detector's floor. Tick **Detection →
-Pre-processing → Denoise**, which estimates that background per frequency
-bin from the recording itself and subtracts it.
+raises every energy-based detector's floor. Tick the detector's box under
+**Detection → Pre-processing** (PSD has it on by default), which estimates
+that background per frequency bin from the recording itself and subtracts
+it.
 
 Then re-tune: the thresholds you had were fitted to the undenoised
 envelope. **Detection → Train detector → Tune detector parameters** does

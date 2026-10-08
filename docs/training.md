@@ -79,13 +79,13 @@ optimisation, now for every detector).
 Tuned on few calls, the parameters can overfit — check the result on a
 recording you did not tune on (Metrics tab).
 
-!!! note "Tuning follows the Denoise checkbox"
+!!! note "Tuning follows the detector's Denoise setting"
 
-    With **Pre-processing → Denoise** on, each recording is denoised once
-    and every trial is scored against that audio — so the parameters you
-    get fit the pipeline you will actually run. Turn the checkbox on or off
-    and you are tuning a different detector; tune it set the way you will
-    use it.
+    When the tuned detector has `denoise` on (PSD by default), each
+    recording is denoised once and every trial is scored against that
+    audio — so the parameters you get fit the pipeline you will actually
+    run. Switch it and you are tuning a different detector; tune it set the
+    way you will use it.
 
 ---
 
@@ -112,8 +112,9 @@ Label files must be given in the **same order and count** as the WAV files.
 
 !!! note "Denoising is baked into the model"
 
-    When **Detection → Pre-processing → Denoise** is on, the GUI trainer
-    denoises the training audio and **records those settings in the model
+    When **Denoise the training audio** is ticked (Train detector →
+    Output), the GUI trainer denoises the training audio with the
+    Settings → Pre-processing parameters and **records them in the model
     file**. `MLDetector` then reapplies exactly the same suppression at
     detection time, whatever the checkbox says — training and inference
     always see the same kind of audio. The same holds for the

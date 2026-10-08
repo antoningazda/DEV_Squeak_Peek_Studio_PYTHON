@@ -15,10 +15,11 @@ import numpy as np
 from pydantic import BaseModel, Field
 from scipy.signal import medfilt
 
+from squeak_peek.audio.denoise import preprocess
 from squeak_peek.detectors.base import AbstractDetector
 from squeak_peek.features.extract import extract_frame_features
 from squeak_peek.labels.model import Label
-from squeak_peek.ml.train import _nfft_for, _preprocess, load_model
+from squeak_peek.ml.train import _nfft_for, _preprocess, load_model, model_denoise
 
 
 class MLParams(BaseModel):
@@ -56,6 +57,7 @@ class MLDetector(AbstractDetector):
     """
 
     id = "ML"
+    uses_pipeline_preprocessing = False  # applies its model's own denoising
     display_name = "ML"
     description = (
         "Machine-learning (Random Forest) detector using a trained model. "
@@ -84,6 +86,8 @@ class MLDetector(AbstractDetector):
         feature_cols = model_dict["feature_cols"]
         fp = model_dict["frame_params"]
 
+        # The denoising the model was trained with, if any (frame_params["denoise"]).
+        signal = preprocess(signal, fs, model_denoise(fp))
         x = _preprocess(signal, fs, fp["fcutMin"], fp["fcutMax"])
 
         frame_len = round(fp["frame_len_s"] * fs)

@@ -16,6 +16,7 @@ from typing import Any
 import torch
 from torch.utils.data import DataLoader, Subset
 
+from squeak_peek.audio.denoise import DenoiseParams
 from squeak_peek.cnn.dataset import USVBoxDataset, collate_fn
 from squeak_peek.cnn.model import Backbone, build_fasterrcnn
 
@@ -52,6 +53,7 @@ def train_cnn(
     val_fraction: float = 0.15,
     device: str | None = None,
     seed: int = 42,
+    denoise: DenoiseParams | None = None,
     progress: bool = False,
     progress_callback: Callable[[float | None, str], None] | None = None,
 ) -> dict[str, Any]:
@@ -71,7 +73,7 @@ def train_cnn(
         window_s=window_s, hop_s=hop_s,
         fcut_min=fcut_min, fcut_max=fcut_max,
         segment_length=segment_length, overlap_factor=overlap_factor,
-        negative_ratio=negative_ratio, seed=seed,
+        negative_ratio=negative_ratio, seed=seed, denoise=denoise,
     )
 
     train_idx, val_idx = dataset.time_split_indices(val_fraction)
@@ -167,6 +169,7 @@ def train_cnn(
             "fcut_max": fcut_max,
             "segment_length": segment_length,
             "overlap_factor": overlap_factor,
+            "denoise": denoise.model_dump() if denoise is not None else None,
         },
         "training_info": {
             "epochs": epochs,

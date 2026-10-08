@@ -26,6 +26,7 @@ import joblib
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 
+from squeak_peek.audio.denoise import DenoiseParams, preprocess
 from squeak_peek.audio.filters import bandpass_filter_filtfilt
 from squeak_peek.audio.io import load_wav
 from squeak_peek.features.extract import extract_frame_features
@@ -89,9 +90,15 @@ def extract_labeled_features(
     fcut_max: float = 120_000,
     frame_len_s: float = 0.02,
     hop_len_s: float = 0.005,
+    denoise: DenoiseParams | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Load one WAV + label file, return (X, y) for that file."""
+    """Load one WAV + label file, return (X, y) for that file.
+
+    ``denoise`` (when given) is applied to the audio first — the same
+    pre-detection noise suppression the pipeline offers, recorded in the
+    model so MLDetector reapplies it at inference."""
     signal, fs = load_wav(wav_path)
+    signal = preprocess(signal, fs, denoise)
     x = _preprocess(signal, fs, fcut_min, fcut_max)
 
     frame_len = round(frame_len_s * fs)
@@ -124,6 +131,7 @@ def collect_training_data(
     frame_len_s: float = 0.02,
     hop_len_s: float = 0.005,
     progress: ProgressFn | None = None,
+    denoise: DenoiseParams | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Extract and concatenate (X, y) across multiple (wav, label) file pairs."""
     if not wav_label_pairs:
@@ -137,7 +145,7 @@ def collect_training_data(
         X, y = extract_labeled_features(
             wav_path, label_path,
             fcut_min=fcut_min, fcut_max=fcut_max,
-            frame_len_s=frame_len_s, hop_len_s=hop_len_s,
+            frame_len_s=frame_len_s, hop_len_s=hop_len_s, denoise=denoise,
         )
         if X.shape[0] > 0:
             xs.append(X)
@@ -180,9 +188,13 @@ def train_from_features(
     min_leaf_size: int = 3,
     noise_ratio: float = 3.0,
     seed: int = 42,
+    denoise: DenoiseParams | None = None,
 ) -> dict[str, Any]:
     """
     Train a RandomForestClassifier from an already-extracted (X, y) pair.
+
+    ``denoise`` must describe how X was extracted; it is stored in the
+    model's frame_params so inference reapplies the same suppression.
 
     Split out from train_model() so callers with pre-extracted features
     (e.g. ml/optimize.py sweeping NoiseRatio) can retrain without redoing
@@ -214,6 +226,7 @@ def train_from_features(
             "hop_len_s": hop_len_s,
             "fcutMin": fcut_min,
             "fcutMax": fcut_max,
+            "denoise": denoise.model_dump() if denoise is not None else None,
         },
         "training_info": {
             "n_trees": n_trees,
@@ -241,6 +254,7 @@ def train_model(
     noise_ratio: float = 3.0,
     seed: int = 42,
     progress: ProgressFn | None = None,
+    denoise: DenoiseParams | None = None,
 ) -> dict[str, Any]:
     """
     Train a Random Forest USV-frame classifier from (wav, label) file pairs.
@@ -252,7 +266,7 @@ def train_model(
         wav_label_pairs,
         fcut_min=fcut_min, fcut_max=fcut_max,
         frame_len_s=frame_len_s, hop_len_s=hop_len_s,
-        progress=progress,
+        progress=progress, denoise=denoise,
     )
     if progress is not None:
         progress(None, "Training Random Forest…")
@@ -261,8 +275,14 @@ def train_model(
         fcut_min=fcut_min, fcut_max=fcut_max,
         frame_len_s=frame_len_s, hop_len_s=hop_len_s,
         n_trees=n_trees, min_leaf_size=min_leaf_size,
-        noise_ratio=noise_ratio, seed=seed,
+        noise_ratio=noise_ratio, seed=seed, denoise=denoise,
     )
+
+
+def model_denoise(frame_params: dict[str, Any]) -> DenoiseParams | None:
+    """The denoising a model was trained with (None for raw audio / older models)."""
+    raw = frame_params.get("denoise")
+    return DenoiseParams.model_validate(raw) if raw else None
 
 
 def save_model(model_dict: dict[str, Any], path: str | Path) -> None:

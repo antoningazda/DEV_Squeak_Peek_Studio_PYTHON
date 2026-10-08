@@ -93,18 +93,23 @@ file for it gives you exactly the labels you drew yourself. See
 
 ## Pre-processing
 
-Optional stationary-noise suppression, applied to the audio **before the
-classical detectors (PSD, BSCD, RBD) run** — not to anything you export,
-review, sonify or classify. ML and CNN detectors ignore these and use the
-denoising recorded in their own model file.
+The stationary-noise suppression shared by every detector whose own
+**Denoise** setting is on (PSD by default — see
+[Detection → Pre-processing](detection.md#pre-processing)). Applied to the
+audio the detector sees only — not to anything you export, review, sonify or
+classify. ML and CNN detectors use the denoising recorded in their own model
+file instead.
 
 | Setting | Key | Default | Notes |
 |---|---|---|---|
-| Enabled | `Detection.PRE.enabled` | `No` | Also the **Denoise** checkbox in [Detection](detection.md#pre-processing) — the two are the same setting |
 | Nfft | `Detection.PRE.nfft` | `1024` samples | STFT window used for estimating and subtracting the noise |
-| Noise percentile | `Detection.PRE.noisePercentile` | `20.0` | Percentile of each bin's magnitude over time taken as its noise level |
-| Oversubtraction | `Detection.PRE.oversubtraction` | `1.50` | Multiple of that noise level subtracted |
-| Max reduction db | `Detection.PRE.maxReductionDb` | `18.0` dB | Largest attenuation any bin may get — a floor, not a gate |
+| Noise percentile | `Detection.PRE.noisePercentile` | `50.0` | Percentile of each bin's magnitude over time taken as its noise level |
+| Oversubtraction | `Detection.PRE.oversubtraction` | `1.25` | Multiple of that noise level subtracted |
+| Max reduction db | `Detection.PRE.maxReductionDb` | `30.0` dB | Largest attenuation any bin may get — a floor, not a gate |
+
+Whether a detector uses it is that detector's own `denoise` parameter
+(`Detection.PSD.denoise`, …), shown in its sub-tab below and as a checkbox
+in the Detection tab.
 
 → [How it works](../methods.md#pre-detection-denoising)
 
@@ -147,6 +152,18 @@ detector-specific and documented in [Methods](../methods.md).
     (`mean`, the default) and an adaptive local threshold. In `mean` mode
     the *Noise window*, *Local window*, *k* and *w* fields on the same page
     do nothing. See [Methods → BSCD](../methods.md#bscd).
+
+!!! note "RBD has a threshold mode and a bandpass switch"
+
+    RBD's default **Threshold mode** `median` uses *Median factor*; the
+    MATLAB rule (`original`) uses *Dynamic scaling*, *Smoothing window thr*
+    and *Amplitude threshold* instead. **Bandpass** (on) filters to the
+    detector's band before the AR fits; off reproduces the MATLAB detector.
+    See [Methods → RBD](../methods.md#rbd).
+
+Each PSD, BSCD and RBD page also has a **Denoise** switch — the same
+setting as that detector's checkbox under
+[Detection → Pre-processing](detection.md#pre-processing).
 
 The ML and CNN pages are where you set the *Model file* — the trained model
 each one needs. **Detection → Train detector → Use for detection** fills it

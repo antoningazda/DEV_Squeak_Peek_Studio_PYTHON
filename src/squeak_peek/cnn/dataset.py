@@ -18,6 +18,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from squeak_peek.audio.denoise import DenoiseParams, preprocess
 from squeak_peek.audio.io import load_wav
 from squeak_peek.cnn.spectrogram_image import freq_to_row, signal_to_image, time_to_col
 from squeak_peek.labels.io import import_labels
@@ -39,6 +40,7 @@ class USVBoxDataset(Dataset):
         overlap_factor: float = 0.5,
         negative_ratio: float = 1.0,
         seed: int = 42,
+        denoise: DenoiseParams | None = None,
     ) -> None:
         if not wav_label_pairs:
             raise ValueError("USVBoxDataset: no (wav, label) pairs given.")
@@ -58,6 +60,7 @@ class USVBoxDataset(Dataset):
 
         for pair_idx, (wav_path, label_path) in enumerate(wav_label_pairs):
             signal, fs = load_wav(wav_path)
+            signal = preprocess(signal, fs, denoise)
             # Calls rejected in Label Edit are false detections, not USVs.
             labels = [lbl for lbl in import_labels(label_path, fs) if lbl.detection_state != "Rejected"]
             self._signals.append(signal)

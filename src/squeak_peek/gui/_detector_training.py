@@ -222,6 +222,12 @@ class DetectorTrainingPage(QWidget):
             "New file next to the first WAV", "Where the trained model is saved.", self._browse_out,
         )
         oform.addRow("Model file:", row)
+        self._train_denoise = QCheckBox("Denoise the training audio")
+        self._train_denoise.setToolTip(
+            "Suppress stationary background noise before training (Settings → Pre-processing). "
+            "Stored in the model: the detector applies the same denoising when it runs."
+        )
+        oform.addRow("", self._train_denoise)
         self._out_group = out_group
         col.addWidget(out_group)
         col.addStretch()
@@ -654,6 +660,13 @@ class DetectorTrainingPage(QWidget):
             progress(fraction, message)
         return report
 
+    def _training_denoise(self):
+        """Denoising for the training audio (Settings → Pre-processing), or None.
+        Stored in the model, so the detector reapplies it at inference."""
+        if not self._train_denoise.isChecked():
+            return None
+        return self._state.settings.detection.pre.model_copy()
+
     def _tune_job(self, pairs):
         ranges = self._tune_ranges_from_table()
         if not any(r.enabled for r in ranges):
@@ -666,6 +679,14 @@ class DetectorTrainingPage(QWidget):
             if steps else None
         n_trials, seed = self._tune_trials.value(), self._tune_seed.value()
         max_seconds = self._tune_seconds.value() or None
+        from squeak_peek.detectors.base import AbstractDetector
+
+        pre = None
+        if AbstractDetector.get(det_id)(params).wants_denoise:
+            from squeak_peek.audio.denoise import spectral_denoise
+
+            denoise = self._state.settings.detection.pre.model_copy()
+            pre = lambda samples, fs: spectral_denoise(samples, fs, denoise)  # noqa: E731
         reporter = self._reporter
 
         def job(progress, cancelled):
@@ -673,6 +694,7 @@ class DetectorTrainingPage(QWidget):
 
             report = reporter(progress, cancelled)
             result = tune_detector(det_id, params, pairs, ranges, n_trials=n_trials, max_seconds=max_seconds,
+                                   pre_process=pre,
                                    post_process=post, seed=seed, progress=report)
             return {"kind": "TUNE", "detector": det_id, "tuning": result, "steps": steps,
                     "n_recordings": len(pairs), "max_seconds": max_seconds}
@@ -685,6 +707,7 @@ class DetectorTrainingPage(QWidget):
             QMessageBox.warning(self, "Invalid band", "'Band from' must be below 'Band to'.")
             return None
         common = dict(
+            denoise=self._training_denoise(),
             fcut_min=fmin, fcut_max=fmax,
             frame_len_s=self._ml_frame.value() / 1000, hop_len_s=self._ml_hop.value() / 1000,
         )
@@ -746,6 +769,7 @@ class DetectorTrainingPage(QWidget):
             return None
         device = self._cnn_device.currentText()
         kwargs = dict(
+            denoise=self._training_denoise(),
             window_s=self._cnn_window.value(), hop_s=self._cnn_hop.value(),
             fcut_min=fmin, fcut_max=fmax,
             backbone=self._cnn_backbone.currentData(), pretrained_backbone=self._cnn_pretrained.isChecked(),
