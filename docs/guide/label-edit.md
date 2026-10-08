@@ -7,6 +7,13 @@ The tab shows a single detected call, zoomed in, with its own spectrogram
 and a compact row of controls. It is designed to be driven almost entirely
 from the keyboard.
 
+<figure markdown>
+  ![The Label Edit tab reviewing one call](../assets/screenshots/label-edit.png#only-light){ .spk-shot }
+  ![The Label Edit tab reviewing one call](../assets/screenshots/label-edit-dark.png#only-dark){ .spk-shot }
+  <figcaption>One call of 284, its boundaries drawn as draggable lines, with the
+  running accept/reject tallies on the right.</figcaption>
+</figure>
+
 ## The two independent questions
 
 Every call carries **two** separate verdicts, because they are different
@@ -71,8 +78,39 @@ past its offset.
 ## Adding a missed call
 
 **Right-click on the spectrogram** to create a new manual label at that
-position. Its length comes from `Visualization.ManualLabelLength` (default
-`0.075` s) — create it, then drag the edges to fit.
+position — create it, then drag the edges to fit. Two
+[Settings → Visualization](settings.md#visualization) values shape it:
+
+| Setting | Default | Effect |
+|---|---|---|
+| `Visualization.ManualLabelLength` | `0.075` s | Length of the new label, centred on the click |
+| `Visualization.ManualLabelMarker` | `md` | Call type written into it |
+
+`md` is a type no detector or classifier produces, so searching an exported
+file for it finds exactly the calls you added by hand. The same right-click
+works on the [Visualization](visualization.md#adding-a-label-by-hand) tab.
+
+## Undoing a mistake
+
+Every edit to the labels is undoable from the **Edit** menu:
+
+| Action | Default key |
+|---|---|
+| Undo | <kbd>Ctrl</kbd>+<kbd>Z</kbd> |
+| Redo | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> |
+
+It covers accepting and rejecting, changing a call type, typing a
+correction, dragging a boundary and creating a label by right-click — in
+Label Edit and in Visualization alike. A typed correction is one undo step
+for the whole field, not one per character.
+
+The history holds the last **50** edits, and **loading a recording clears
+it** — undo cannot reach back past a file change.
+
+!!! warning "Undo is not a substitute for exporting"
+
+    The history lives in memory, and running a detector again replaces the
+    whole detected-label set. Export when you have finished a pass.
 
 ## Spectrogram settings
 

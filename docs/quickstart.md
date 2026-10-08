@@ -24,6 +24,11 @@ Open the **Data Input** tab.
 
 The title bar shows the loaded recording, and the other tabs come alive.
 
+<figure markdown>
+  ![The Data Input tab after loading](assets/screenshots/data-input.png#only-light){ .spk-shot }
+  ![The Data Input tab after loading](assets/screenshots/data-input-dark.png#only-dark){ .spk-shot }
+</figure>
+
 → [Data Input in detail](guide/data-input.md)
 
 ## 2. Check what you are looking at
@@ -35,6 +40,8 @@ by default showing 40–120 kHz — the rodent USV band.
   <kbd>←</kbd> / <kbd>→</kbd> keys.
 - Change **Start (s)** and **Length (s)** to jump somewhere specific or
   widen the window.
+- Drag the spectrogram to pan and scroll to zoom; only time moves, and the
+  image is re-rendered for wherever you land.
 - Tick **Detected labels** and **Reference labels** to overlay the label
   files you loaded.
 - Click **🔊 Sonify** to hear the current segment, pitch-shifted and slowed
@@ -43,18 +50,32 @@ by default showing 40–120 kHz — the rodent USV band.
 If the spectrogram looks empty, your calls may sit outside the default
 frequency range — adjust it in [Settings](guide/settings.md#visualization).
 
+<figure markdown>
+  ![The Visualization tab](assets/screenshots/visualization.png#only-light){ .spk-shot }
+  ![The Visualization tab](assets/screenshots/visualization-dark.png#only-dark){ .spk-shot }
+</figure>
+
 → [Visualization in detail](guide/visualization.md)
 
 ## 3. Run a detector
 
 Go to the **Detection** tab.
 
-1. Under **Detectors**, tick **PSD**. (You can tick several and they all run,
-   each producing its own label file.)
-2. Under **Post-processing**, **Merge Close Labels** and **Remove Short
+1. Under **Detectors**, tick **PSD** (**BSCD** is ticked by default — untick
+   it, or leave both: every ticked detector runs and writes its own label
+   file).
+2. Leave **Pre-processing → Denoise** off for now. It helps on noisy
+   recordings but wants its own threshold tuning —
+   [see Detection](guide/detection.md#pre-processing).
+3. Under **Post-processing**, **Merge Close Labels** and **Remove Short
    Labels** are on by default. Leave them.
-3. Set the **Export folder**, or leave it empty to write next to the WAV.
-4. Click **Run detectors**.
+4. Set the **Export folder**, or leave it empty to write next to the WAV.
+5. Click **Run detectors**.
+
+<figure markdown>
+  ![The Detection tab](assets/screenshots/detection.png#only-light){ .spk-shot }
+  ![The Detection tab](assets/screenshots/detection-dark.png#only-dark){ .spk-shot }
+</figure>
 
 Each detector writes a file named
 
@@ -91,7 +112,13 @@ its spectrogram.
 | <kbd>Space</kbd> | Accept both and move to the next call |
 
 Most of a review pass is just holding <kbd>Space</kbd> and stopping when
-something looks wrong. When you are done, click **Export labels…**.
+something looks wrong. Got one wrong? <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes
+it. When you are done, click **Export labels…**.
+
+<figure markdown>
+  ![The Label Edit tab](assets/screenshots/label-edit.png#only-light){ .spk-shot }
+  ![The Label Edit tab](assets/screenshots/label-edit-dark.png#only-dark){ .spk-shot }
+</figure>
 
 → [Label Edit in detail](guide/label-edit.md)
 
@@ -100,6 +127,11 @@ something looks wrong. When you are done, click **Export labels…**.
 If you loaded reference labels, open **Metrics** and click **Compute
 metrics** for true positives, false positives, false negatives, precision,
 recall and F1.
+
+<figure markdown>
+  ![The Metrics tab](assets/screenshots/metrics.png#only-light){ .spk-shot }
+  ![The Metrics tab](assets/screenshots/metrics-dark.png#only-dark){ .spk-shot }
+</figure>
 
 → [Metrics in detail](guide/metrics.md)
 

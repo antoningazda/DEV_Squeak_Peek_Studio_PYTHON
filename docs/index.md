@@ -28,6 +28,13 @@ hear.
 Everything the GUI does, the CLI does too, so a protocol you develop
 interactively can be run unattended over a whole cohort.
 
+<figure markdown>
+  ![Squeak Peek Studio's Visualization tab](assets/screenshots/visualization.png#only-light){ .spk-shot }
+  ![Squeak Peek Studio's Visualization tab](assets/screenshots/visualization-dark.png#only-dark){ .spk-shot }
+  <figcaption>One second of a rat recording: detected calls in cyan, reference labels in
+  white, pitch traces in orange — and the whole thing audible with one click.</figcaption>
+</figure>
+
 ## What it does
 
 <div class="spk-grid" markdown>

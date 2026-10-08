@@ -87,6 +87,18 @@ project. A source checkout ships `settings/default.json`.
       "k": 0.023,
       "w": 3.0
     },
+    "BSCD": {
+      "wlen": 0.008,
+      "maWindow": 7500,
+      "thresholdMode": "mean"
+    },
+    "PRE": {
+      "enabled": false,
+      "nfft": 1024,
+      "noisePercentile": 20.0,
+      "oversubtraction": 1.5,
+      "maxReductionDb": 18.0
+    },
     "POST": {
       "maxGapToMerge": 0.005,
       "minLabelLength": 0.001,
@@ -95,14 +107,17 @@ project. A source checkout ships `settings/default.json`.
   },
   "Visualization": {
     "SpectrogramWindow": 1024,
-    "SpectrogramColormap": "invgray"
+    "SpectrogramColormap": "invgray",
+    "ManualLabelLength": 0.075,
+    "ManualLabelMarker": "md"
   }
 }
 ```
 
 Top-level sections: `DataInput`, `Visualization`, `LabelEdit`, `Detection`
-(with one sub-object per detector plus `POST`), `Classification` and
-`Video`.
+(one sub-object per detector, plus `PRE` for
+[pre-detection denoising](methods.md#pre-detection-denoising) and `POST`
+for post-processing), `Classification` and `Video`.
 
 Two properties worth knowing:
 

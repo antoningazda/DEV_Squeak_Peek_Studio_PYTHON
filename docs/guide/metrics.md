@@ -3,6 +3,12 @@
 Score a detection run against ground truth. Requires **reference labels**
 loaded in [Data Input](data-input.md).
 
+<figure markdown>
+  ![The Metrics tab](../assets/screenshots/metrics.png#only-light){ .spk-shot }
+  ![The Metrics tab](../assets/screenshots/metrics-dark.png#only-dark){ .spk-shot }
+  <figcaption>The example recording's bundled detections scored against its reference labels.</figcaption>
+</figure>
+
 ## Label counts
 
 Always shown, no reference needed: how many detected and reference labels

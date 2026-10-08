@@ -3,21 +3,34 @@
 Everything starts here. Until you click **Load files**, the Visualization,
 Detection and Label Edit tabs have nothing to show.
 
+<figure markdown>
+  ![The Data Input tab with the example recording loaded](../assets/screenshots/data-input.png#only-light){ .spk-shot }
+  ![The Data Input tab with the example recording loaded](../assets/screenshots/data-input-dark.png#only-dark){ .spk-shot }
+  <figcaption>Single-file mode with the bundled example recording and its two label files.</figcaption>
+</figure>
+
 ## Single file mode
 
 The default. You pick up to three files:
 
 | Field | Required | What it is |
 |---|---|---|
-| **WAV file** | Yes | The ultrasonic recording to analyse |
-| **Detected labels** | No | A previously detected label file to load and continue editing in Label Edit |
-| **Reference labels** | No | Ground-truth labels, used to score detections in [Metrics](metrics.md) |
+| **Select USV (.wav)** | Yes | The ultrasonic recording to analyse |
+| **Select reference labels (.txt)** | No | Ground-truth labels, used to score detections in [Metrics](metrics.md) |
+| **Select detected labels (.txt)** | No | A previously detected label file to load and continue editing in Label Edit |
+
+Each button opens a file chooser, and the field beside it is editable — you
+can also paste or type a path.
 
 Click **Load files**. The WAV is read into memory and the status line shows
 
 ```
-Sample rate: 250,000 Hz · Duration: 144.106 s · Detected labels: 312 · Reference labels: 298
+Duration: 144.107 s · Sample rate: 250,000 Hz · Detected labels: 284 · Reference labels: 270
 ```
+
+Loading **replaces the labels currently in memory**, so if you already have
+labels loaded — including unexported Label Edit decisions — you are asked to
+confirm first.
 
 If a label file fails to parse, the error is reported under **Load errors**
 and the recording still loads — a malformed reference file never blocks you

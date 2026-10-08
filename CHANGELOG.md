@@ -5,6 +5,40 @@ All notable user-facing changes to Squeak Peek Studio. Format loosely follows
 
 ## [Unreleased]
 
+- Added optional pre-detection denoising: stationary background noise is
+  estimated per frequency bin from the recording itself and subtracted
+  before the classical detectors run (Detection → Pre-processing, or
+  `--denoise` on the CLI). Detection only — export, review, sonification and
+  classification keep the original audio. ML/CNN models record the
+  denoising they were trained with and reapply it at inference, and
+  parameter tuning fits the denoised pipeline.
+- Added undo/redo for label edits (Edit menu, Ctrl+Z / Ctrl+Shift+Z),
+  covering accept/reject, call-type corrections, boundary drags and manual
+  labels, in both Label Edit and Visualization.
+- Mouse drag/wheel now pans and zooms the spectrogram's time axis, with the
+  visible range re-rendered rather than stretched; the Visualization tab
+  adopts the new range as its current segment.
+- Pitch trace: frames are gated on peak prominence over a local background
+  and followed with a Viterbi path that penalises frequency jumps, so the
+  trace no longer zigzags between parallel bands or traces pure noise.
+- Rewrote the BSCD detector as a literal port of the original `bscd.m`, and
+  added a `thresholdMode` parameter: `mean` (the original global threshold,
+  now the default) or `adaptive` (the local noise-floor scheme, which is
+  what `noiseWindow`/`localWindow`/`k`/`w` drive).
+- Fixed PSD's power envelope: it is now summed straight from the power
+  spectrum instead of via decibels, whose `+eps` floor biased the noise
+  floor — and so the threshold — on quiet recordings. Single-frame
+  detections are kept and left to Remove Short Labels, as in the MATLAB
+  original.
+- BSCD/RBD smoothing now matches MATLAB's `movmean`, whose window shrinks at
+  the edges instead of padding.
+- The call type given to a manually created label is configurable
+  (Settings → Visualization → Manual label text, default `md`).
+- Release builds are signed, notarized and stapled when the corresponding
+  repository secrets are present, and produce the same unsigned artifacts as
+  before when they are not (see `packaging/SIGNING.md`).
+- Documented the above on the documentation site and added generated
+  screenshots of every tab (`tools/make_docs_screenshots.py`).
 - Added a Train/Tune UI for the ML and CNN detectors, a rat app icon, and a
   general UI polish pass.
 - Bundled PyTorch/torchvision as core dependencies (CNN detector and

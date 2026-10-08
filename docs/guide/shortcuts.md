@@ -16,6 +16,8 @@ times. Every one of them has a key.
 | Accept classification | <kbd>C</kbd> | Label Edit |
 | Reject classification | <kbd>Shift</kbd>+<kbd>C</kbd> | Label Edit |
 | Accept both & advance | <kbd>Space</kbd> | Label Edit |
+| Undo | <kbd>Ctrl</kbd>+<kbd>Z</kbd> | Edit menu — label edits in Label Edit / Visualization |
+| Redo | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | Edit menu — label edits in Label Edit / Visualization |
 
 On macOS, <kbd>Ctrl</kbd> means <kbd>⌘</kbd>.
 
@@ -40,6 +42,12 @@ Hold <kbd>Space</kbd> through the easy calls; stop when something looks
 wrong.
 
 ## Customising
+
+<figure markdown>
+  ![Settings, Shortcuts section](../assets/screenshots/settings-shortcuts.png#only-light){ .spk-shot }
+  ![Settings, Shortcuts section](../assets/screenshots/settings-shortcuts-dark.png#only-dark){ .spk-shot }
+  <figcaption>Every binding, where it applies, and a reset button per row.</figcaption>
+</figure>
 
 **Settings → Shortcuts.** Click a shortcut field and press the new key
 combination. It saves immediately and takes effect app-wide — no Apply, no

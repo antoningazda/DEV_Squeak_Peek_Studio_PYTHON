@@ -88,12 +88,22 @@
   white-space: nowrap;
 }
 
-/* Screenshot placeholders ------------------------------------------------ */
+/* Screenshots ------------------------------------------------------------ */
 
 .spk-shot {
   border: 1px solid var(--md-default-fg--lightest);
   border-radius: 0.4rem;
   overflow: hidden;
+  display: block;
+  width: 100%;
+}
+
+/* Light/dark screenshot pairs. Material already hides the wrong one of a
+   #only-light / #only-dark pair; repeated here so the pairing does not
+   depend on the theme version. */
+[data-md-color-scheme="default"] img[src$="#only-dark"],
+[data-md-color-scheme="slate"] img[src$="#only-light"] {
+  display: none;
 }
 
 @media screen and (max-width: 44.9em) {

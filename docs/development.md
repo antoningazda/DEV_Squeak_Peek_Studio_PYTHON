@@ -38,6 +38,7 @@ src/squeak_peek/       Main installable package
     video/             Sync, spectrogram panel, ffmpeg export
     gui/               PyQt6 desktop application
 cli/                   Click-based headless CLI
+tools/                 Developer scripts (documentation screenshots)
 tests/                 pytest suite
 settings/              default.json (shared with the MATLAB project)
 packaging/             PyInstaller spec, installers, signing scripts
@@ -206,6 +207,30 @@ mkdocs build      # static site into site/
 Docs live next to the code deliberately: a change to a detector's
 parameters and the documentation of those parameters belong in the same
 commit.
+
+### Screenshots
+
+`docs/assets/screenshots/` is **generated**, not captured by hand:
+
+```bash
+QT_QPA_PLATFORM=offscreen python tools/make_docs_screenshots.py
+```
+
+The script drives the real `MainWindow` offscreen against the example
+recording in `data/example/single`, so the images cannot drift from the UI.
+Each tab is shot twice — light and dark — and the pages embed the pair with
+MkDocs Material's `#only-light` / `#only-dark` fragment, so the screenshots
+follow the reader's colour scheme:
+
+```markdown
+![Alt text](../assets/screenshots/detection.png#only-light){ .spk-shot }
+![Alt text](../assets/screenshots/detection-dark.png#only-dark){ .spk-shot }
+```
+
+It needs the GUI dependencies plus `matplotlib` (the colormap LUTs), and
+writes its forced light/dark preference to a QSettings domain of its own,
+so running it never changes your own theme or key bindings. **Re-run it
+after any UI change that the documentation shows.**
 
 ## Contributing
 

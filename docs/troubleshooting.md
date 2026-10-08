@@ -81,9 +81,33 @@ In order of effect:
 
 1. Turn on **Filter Broadband** with `minTonality = 0.5`
    ([why](methods.md#tonality-filtering)).
-2. Raise `w` (PSD, BSCD) — the weight on the local SNR term.
+2. Raise `w` (PSD) — the weight on the local SNR term. On BSCD, `w` only
+   applies in `adaptive`
+   [threshold mode](methods.md#threshold-mode); in the default `mean` mode
+   raise `maWindow` instead.
 3. Raise `minEffectivePower` (PSD) or `amplitudeThreshold` (RBD).
 4. Raise **Min label length** in post-processing.
+5. If the background itself is the problem rather than any one setting, try
+   **Pre-processing → Denoise** and then re-tune — see
+   [pre-detection denoising](methods.md#pre-detection-denoising).
+
+### The detector fires on the room, not the animal
+
+A constant fan, pump or electronics whine sits in the band all session and
+raises every energy-based detector's floor. Tick **Detection →
+Pre-processing → Denoise**, which estimates that background per frequency
+bin from the recording itself and subtracts it.
+
+Then re-tune: the thresholds you had were fitted to the undenoised
+envelope. **Detection → Train detector → Tune detector parameters** does
+this against the denoised audio automatically when the checkbox is on.
+
+### I accepted or rejected the wrong call
+
+<kbd>Ctrl</kbd>+<kbd>Z</kbd> (**Edit → Undo**) reverts the last label edit —
+accept/reject, call-type change, boundary drag or a manual label. The last
+50 edits are kept, but **loading a recording clears the history**. See
+[Label Edit → Undoing a mistake](guide/label-edit.md#undoing-a-mistake).
 
 ### One call detected as several fragments
 
@@ -106,6 +130,10 @@ hunt, turn off `runWholeSignal` on PSD and work on a 10-second ROI.
 
 The first run after launch is also slower than later ones: BSCD and RBD
 JIT-compile their inner loops on first use.
+
+**Denoise** adds an STFT pass over the whole recording before detection. It
+is computed once per recording and shared by every classical detector in
+the same run, so ticking a second detector does not pay for it twice.
 
 ---
 

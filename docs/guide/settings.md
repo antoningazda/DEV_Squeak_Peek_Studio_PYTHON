@@ -12,6 +12,7 @@ the codebase and its parameter form appears here with no extra work.
 |---|---|
 | Data Input | Default files/folders auto-loaded at startup, single-vs-batch mode |
 | Visualization | Spectrogram rendering, overlays and sonification |
+| Pre-processing | Noise suppression applied to the audio before the classical detectors |
 | PSD / BSCD / RBD / ML / CNN detector | One sub-tab per detector, with its own parameters |
 | Post-processing | Merging and filtering rules applied after any detector |
 | USV model / Duration classifier | One sub-tab per classifier |
@@ -19,6 +20,13 @@ the codebase and its parameter form appears here with no extra work.
 | Video | Finger-snap sync-click detection |
 | Appearance | Colour scheme |
 | [Shortcuts](shortcuts.md) | View and customise keyboard shortcuts |
+
+<figure markdown>
+  ![The Settings tab, Visualization section](../assets/screenshots/settings-visualization.png#only-light){ .spk-shot }
+  ![The Settings tab, Visualization section](../assets/screenshots/settings-visualization-dark.png#only-dark){ .spk-shot }
+  <figcaption>Sections on the left, the selected section's form on the right. Every
+  field carries its own one-line explanation and, where it has a range, a slider.</figcaption>
+</figure>
 
 **Apply** pushes the edited values to the running app. **Save settings…**
 writes them to JSON; **Load settings…** replaces everything from a file.
@@ -60,6 +68,7 @@ Defaults loaded at startup, so you do not re-pick the same paths every day.
 | Show detected / reference labels | `ShowLabels` / `ShowReferenceLabels` | `true` | Default overlay state |
 | Label / reference label colour | `LabelColor` / `ReferenceLabelColor` | `cyan` / `white` | |
 | Manual label length | `ManualLabelLength` | `0.075` s | Duration of a right-click-created label |
+| Manual label text | `ManualLabelMarker` | `md` | Call type written into a right-click-created label |
 | Sonification semitones | `SonificationST` | `-35` | More negative shifts further down. −36 is exactly three octaves |
 | Sonification slowdown factor | `SonificationSlowdown` | `4` | Only used when playback speed is set to use it |
 | Sonification playback speed | — | Match the pitch shift | See below |
@@ -76,6 +85,28 @@ Defaults loaded at startup, so you do not re-pick the same paths every day.
 broadband noise; shifted down, that becomes a wall of hiss that buries the
 calls. The spectral gate leaves calls standing out of a quiet background.
 Turn it off to hear the raw signal.
+
+**Manual label text** is what makes hand-added calls findable later: `md`
+is a type no detector or classifier produces, so grepping an exported label
+file for it gives you exactly the labels you drew yourself. See
+[Visualization → Adding a label by hand](visualization.md#adding-a-label-by-hand).
+
+## Pre-processing
+
+Optional stationary-noise suppression, applied to the audio **before the
+classical detectors (PSD, BSCD, RBD) run** — not to anything you export,
+review, sonify or classify. ML and CNN detectors ignore these and use the
+denoising recorded in their own model file.
+
+| Setting | Key | Default | Notes |
+|---|---|---|---|
+| Enabled | `Detection.PRE.enabled` | `No` | Also the **Denoise** checkbox in [Detection](detection.md#pre-processing) — the two are the same setting |
+| Nfft | `Detection.PRE.nfft` | `1024` samples | STFT window used for estimating and subtracting the noise |
+| Noise percentile | `Detection.PRE.noisePercentile` | `20.0` | Percentile of each bin's magnitude over time taken as its noise level |
+| Oversubtraction | `Detection.PRE.oversubtraction` | `1.50` | Multiple of that noise level subtracted |
+| Max reduction db | `Detection.PRE.maxReductionDb` | `18.0` dB | Largest attenuation any bin may get — a floor, not a gate |
+
+→ [How it works](../methods.md#pre-detection-denoising)
 
 ## Post-processing
 
@@ -102,6 +133,20 @@ detector-specific and documented in [Methods](../methods.md).
 | RBD | `Detection.RBD.*` | [Methods → RBD](../methods.md#rbd) |
 | ML | `Detection.ML.*` | [Methods → ML](../methods.md#ml-random-forest) |
 | CNN | `Detection.CNN.*` | [Methods → CNN](../methods.md#cnn-faster-r-cnn) |
+
+<figure markdown>
+  ![The Settings tab, BSCD detector section](../assets/screenshots/settings-bscd.png#only-light){ .spk-shot }
+  ![The Settings tab, BSCD detector section](../assets/screenshots/settings-bscd-dark.png#only-dark){ .spk-shot }
+  <figcaption>A detector page is generated from the detector's parameter model, so it
+  always matches the code — here BSCD, including its <strong>Threshold mode</strong>.</figcaption>
+</figure>
+
+!!! note "BSCD has a threshold mode"
+
+    **Threshold mode** switches BSCD between the original MATLAB rule
+    (`mean`, the default) and an adaptive local threshold. In `mean` mode
+    the *Noise window*, *Local window*, *k* and *w* fields on the same page
+    do nothing. See [Methods → BSCD](../methods.md#bscd).
 
 The ML and CNN pages are where you set the *Model file* — the trained model
 each one needs. **Detection → Train detector → Use for detection** fills it

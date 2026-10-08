@@ -40,14 +40,22 @@ squeak-peek-cli detect [OPTIONS] WAV_PATH
 | `-s, --settings FILE` | `settings/default.json` | Settings JSON |
 | `-o, --output PATH` | next to the WAV | Output label file |
 | `--min-tonality FLOAT` | from settings | Drop broadband detections below this score, 0–1. Overrides `Detection.POST.minTonality`. Try `0.5` |
+| `--denoise / --no-denoise` | from settings | Suppress stationary background noise before detection. Overrides `Detection.PRE.enabled` |
 
 ```bash
 squeak-peek-cli detect recording.wav
 squeak-peek-cli detect recording.wav -d bscd --min-tonality 0.5
+squeak-peek-cli detect recording.wav -d psd --denoise
 squeak-peek-cli detect recording.wav -s protocols/noisy_room.json -o out.txt
 ```
 
-→ [Methods](methods.md) · [Tonality filtering](methods.md#tonality-filtering)
+`--denoise` affects the classical detectors (PSD, BSCD, RBD) only: ML and
+CNN apply whatever denoising their model was trained with, so that training
+and inference always see the same kind of audio. The exported labels always
+refer to the original recording.
+
+→ [Methods](methods.md) · [Tonality filtering](methods.md#tonality-filtering) ·
+[Pre-detection denoising](methods.md#pre-detection-denoising)
 
 ---
 
@@ -65,6 +73,7 @@ squeak-peek-cli batch [OPTIONS] WAV_DIR
 | `-s, --settings FILE` | `settings/default.json` |
 | `-o, --output-dir PATH` | next to each WAV |
 | `--min-tonality FLOAT` | from settings |
+| `--denoise / --no-denoise` | from settings |
 
 ```bash
 squeak-peek-cli batch recordings/ -d bscd --min-tonality 0.5 -o detected/

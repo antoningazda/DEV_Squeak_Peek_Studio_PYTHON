@@ -39,6 +39,15 @@ by filename. Detection and Classification will process every recording in
 turn; Visualization and Label Edit still show the one recording you have
 loaded. See [Data Input](data-input.md#batch-folder-mode).
 
+## Undoing an edit
+
+Changes to the detected labels — accept/reject, a corrected call type, a
+dragged boundary, a label you added by right-click — are undoable from the
+**Edit** menu (<kbd>Ctrl</kbd>+<kbd>Z</kbd> /
+<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>), across Label Edit and
+Visualization alike. Loading a recording clears the history. See
+[Label Edit](label-edit.md#undoing-a-mistake).
+
 ## Keyboard
 
 Review work is keyboard-driven. See

@@ -6,6 +6,13 @@ kind* they are — and which ones are not calls at all.
 The tab has two sub-tabs: **Classify** (run a trained model) and
 **Train model** (make one from your own labelled recordings).
 
+<figure markdown>
+  ![The Classification tab](../assets/screenshots/classification.png#only-light){ .spk-shot }
+  ![The Classification tab](../assets/screenshots/classification-dark.png#only-dark){ .spk-shot }
+  <figcaption>The Classify sub-tab: model, the recordings to run it over, options, and the
+  results table that fills in as calls are typed.</figcaption>
+</figure>
+
 ## How the model works
 
 Two stages, run in order on each detected call:

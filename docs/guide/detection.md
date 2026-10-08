@@ -5,6 +5,13 @@ classifier, choose post-processing, and run — all in the **Run detectors**
 sub-tab. The **Train detector** sub-tab
 [tunes or trains detectors](#train-detector) on your own labeled recordings.
 
+<figure markdown>
+  ![The Detection tab's Run detectors sub-tab](../assets/screenshots/detection.png#only-light){ .spk-shot }
+  ![The Detection tab's Run detectors sub-tab](../assets/screenshots/detection-dark.png#only-dark){ .spk-shot }
+  <figcaption>Run detectors: detectors on the left, optional classifiers and the
+  pre/post-processing chain on the right, export folder below.</figcaption>
+</figure>
+
 ## Detectors
 
 Tick one or more. **Each selected detector runs independently and exports
@@ -19,8 +26,9 @@ same recording in a single pass.
 | **ML** | Random Forest sliding-window classifier over acoustic features. Needs a trained model file. |
 | **CNN** | Faster R-CNN predicting a time/frequency box per call. Needs a trained checkpoint. |
 
-Start with **PSD**. If your recordings are noisy or PSD keeps clipping call
-onsets, try **BSCD**. See [Methods](../methods.md) for what each one
+The list is alphabetical and the first entry, **BSCD**, is ticked when the
+app starts. Start with **PSD** if your recordings are clean; if they are
+noisy or PSD keeps clipping call onsets, stay with **BSCD**. See [Methods](../methods.md) for what each one
 actually computes, how to tune it, and when to prefer it.
 
 !!! note "ML and CNN need a model first"
@@ -45,6 +53,43 @@ detector × classifier pair.
 A classifier never invents new events. It only fills in the call type of
 events a detector already found.
 
+## Pre-processing
+
+One checkbox, applied to the **audio** before any detector sees it:
+
+| Step | Default | What it does |
+|---|---|---|
+| **Denoise (suppress stationary background noise)** | off | Estimates each frequency bin's background level from the recording itself and subtracts it, so a detector's envelope is driven by the calls rather than by the room |
+
+An ultrasonic recording is mostly background — fans, electronics,
+microphone hiss — that barely changes over a session, while calls are
+sparse and brief. Energy-based detectors see that constant in-band noise as
+a large part of their envelope, which costs precision. See
+[Pre-detection denoising](../methods.md#pre-detection-denoising) for the
+algorithm and its parameters.
+
+Three things worth knowing:
+
+- It applies to the **classical detectors** (PSD, BSCD, RBD). **ML** and
+  **CNN** ignore it and apply whatever denoising their own model was
+  trained with, so training and inference always see the same kind of
+  audio.
+- It is for **detection only**. Export, [Label Edit](label-edit.md),
+  sonification and [classification](classification.md) all keep working on
+  the original recording — denoising never ends up in anything you listen
+  to, look at or ship.
+- Thresholds tuned on raw audio **may need retuning** after you turn it on;
+  the envelope it feeds the detector is quieter and flatter. Score the
+  change on a recording you have reference labels for before trusting it.
+
+The denoised audio is computed once per recording and reused by every
+selected classical detector in the same run.
+
+!!! tip "From the command line"
+
+    `squeak-peek-cli detect recording.wav --denoise` (also on `batch`).
+    See the [CLI reference](../cli.md#detect).
+
 ## Post-processing
 
 Applied to every detector's output before export, always in this order:
@@ -62,8 +107,9 @@ produced them.
 | **Merge Close Labels** | **on** | Merge detections separated by a gap smaller than *Max gap to merge* |
 | **Remove Short Labels** | **on** | Discard detections shorter than *Min label length* |
 
-Thresholds live in
-[Settings → Post-processing](settings.md#post-processing):
+Thresholds for both stages live in Settings —
+[Pre-processing](settings.md#pre-processing) and
+[Post-processing](settings.md#post-processing):
 
 | Threshold | Default | Used by |
 |---|---|---|
@@ -114,6 +160,12 @@ file per recording per detector (per classifier).
 
 ## Train detector
 
+<figure markdown>
+  ![The Detection tab's Train detector sub-tab](../assets/screenshots/detection-train.png#only-light){ .spk-shot }
+  ![The Detection tab's Train detector sub-tab](../assets/screenshots/detection-train-dark.png#only-dark){ .spk-shot }
+  <figcaption>Train detector, with the loaded recording added as a training pair.</figcaption>
+</figure>
+
 Fit a detector to *your* recordings. Add labeled recordings with **Add
 loaded** (the Data Input single file + its reference labels), **Add batch**
 (the Data Input batch folders, paired by filename) or **Add files…**, then
@@ -134,6 +186,21 @@ recording to keep each trial fast — make sure that part contains calls.
 **Use for detection** writes the tuned parameters (or the new model path and
 calibrated sensitivity) into the detector's Settings and checks it in Run
 detectors. Save your settings to keep them.
+
+!!! note "Denoising follows into training and tuning"
+
+    Whatever **Pre-processing → Denoise** is set to in Run detectors is
+    what this sub-tab uses:
+
+    - **Tuning** denoises each recording once and searches parameters
+      against that audio, so the values you get are the values that fit how
+      you will actually run the detector.
+    - **Training** an ML or CNN model records the denoising in the model
+      file, and the detector reapplies exactly that at inference — which is
+      why ML and CNN ignore the checkbox at detection time.
+
+    Change the checkbox and the result is a different model, or a different
+    set of tuned parameters. Tune or train with it set the way you will run.
 
 ---
 
