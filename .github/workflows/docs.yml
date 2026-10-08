@@ -15,12 +15,14 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      - "examples/**"
       - ".github/workflows/docs.yml"
   pull_request:
     branches: [main]
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      - "examples/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch: {}
 

@@ -21,6 +21,9 @@ alongside the `squeak-peek` desktop command when you
 
 Global options: `--version`, `--help`. Every command takes `--help`.
 
+For end-to-end recipes — cohort scoring, threshold sweeps, detection →
+classification, building a training set — see [CLI workflows](workflows.md).
+
 ---
 
 ## `detect`
@@ -94,6 +97,9 @@ for f in recordings/*.wav; do
   squeak-peek-cli evaluate "detected/$base.txt" "reference/$base.txt"
 done
 ```
+
+For a summary CSV with a pooled total, use
+[`examples/evaluate_cohort.py`](workflows.md#2-scoring-a-cohort-against-reference-labels).
 
 ---
 

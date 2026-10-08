@@ -8,9 +8,13 @@ site_url: https://antoningazda.github.io/squeak-peek-studio-releases/
 # The docs source lives in the main (code) repo so it cannot drift from the
 # software it describes; CI publishes the built site to the public releases
 # repo, which is where users already go for the installers.
-repo_url: https://github.com/antoningazda/DEV_Squeak_Peek_Studio_PYTHON
+#
+# repo_url drives the header widget (version + stars), so it points at the
+# releases repo — that is where the published versions are. Edits still go
+# to the code repo, hence the absolute edit_uri.
+repo_url: https://github.com/antoningazda/squeak-peek-studio-releases
 repo_name: Squeak-Peek-Studio
-edit_uri: edit/main/docs/
+edit_uri: https://github.com/antoningazda/DEV_Squeak_Peek_Studio_PYTHON/edit/main/docs/
 
 copyright: >-
   © Antonín Gazda · MIT licensed ·
@@ -74,7 +78,11 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.keys
-  - pymdownx.snippets
+  # Workflow pages embed the runnable scripts from examples/ verbatim, so
+  # the docs cannot drift from code that is actually executed.
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
@@ -115,6 +123,7 @@ nav:
   - Methods: methods.md
   - Training models: training.md
   - CLI reference: cli.md
+  - CLI workflows: workflows.md
   - File formats: file-formats.md
   - Troubleshooting: troubleshooting.md
   - Development: development.md
