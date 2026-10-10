@@ -65,15 +65,21 @@ jobs:
         if: runner.os == 'Linux'
         run: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
-      # PyTorch stopped publishing Intel-macOS wheels after 2.2.2 (built
-      # against NumPy 1.x), so pin that line and keep NumPy below 2 for the
-      # whole install via PIP_CONSTRAINT — otherwise a later dependency can
-      # pull NumPy 2 back in and torch's tensor<->ndarray bridge breaks.
-      - name: Pin last Intel-compatible torch (macOS Intel)
+      # Several dependencies have stopped publishing Intel-macOS wheels:
+      # PyTorch after 2.2.2 (built against NumPy 1.x) and numba/llvmlite
+      # after 0.62.1/0.45.1, whose sdists then fail to build without LLVM.
+      # Pin each to its last Intel release for the whole install via
+      # PIP_CONSTRAINT — otherwise a later dependency can pull NumPy 2 back
+      # in and torch's tensor<->ndarray bridge breaks — and prefer older
+      # wheels over newer sdists so the next package to drop Intel wheels
+      # resolves to its last wheel instead of failing the build.
+      - name: Pin last Intel-compatible wheels (macOS Intel)
         if: runner.os == 'macOS' && runner.arch == 'X64'
         run: |
-          printf '%s\n' "numpy<2" "torch==2.2.2" "torchvision==0.17.2" > "$RUNNER_TEMP/intel-constraints.txt"
+          printf '%s\n' "numpy<2" "torch==2.2.2" "torchvision==0.17.2" \
+            "numba==0.62.1" "llvmlite==0.45.1" > "$RUNNER_TEMP/intel-constraints.txt"
           echo "PIP_CONSTRAINT=$RUNNER_TEMP/intel-constraints.txt" >> "$GITHUB_ENV"
+          echo "PIP_PREFER_BINARY=1" >> "$GITHUB_ENV"
 
       - name: Install package + PyInstaller
         run: |
