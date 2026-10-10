@@ -13,8 +13,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macos-latest is Apple Silicon, so its build is arm64-only and
+          # will not launch on Intel Macs — Intel gets its own x86_64 build.
           - os: macos-latest
             asset_name: SqueakPeekStudio-macOS
+          - os: macos-15-intel
+            asset_name: SqueakPeekStudio-macOS-Intel
           - os: windows-latest
             asset_name: SqueakPeekStudio-windows
           - os: ubuntu-latest
@@ -60,6 +64,16 @@ jobs:
       - name: Install CPU-only torch (Linux)
         if: runner.os == 'Linux'
         run: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      # PyTorch stopped publishing Intel-macOS wheels after 2.2.2 (built
+      # against NumPy 1.x), so pin that line and keep NumPy below 2 for the
+      # whole install via PIP_CONSTRAINT — otherwise a later dependency can
+      # pull NumPy 2 back in and torch's tensor<->ndarray bridge breaks.
+      - name: Pin last Intel-compatible torch (macOS Intel)
+        if: runner.os == 'macOS' && runner.arch == 'X64'
+        run: |
+          printf '%s\n' "numpy<2" "torch==2.2.2" "torchvision==0.17.2" > "$RUNNER_TEMP/intel-constraints.txt"
+          echo "PIP_CONSTRAINT=$RUNNER_TEMP/intel-constraints.txt" >> "$GITHUB_ENV"
 
       - name: Install package + PyInstaller
         run: |

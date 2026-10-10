@@ -32,7 +32,7 @@ installing and opening the downloaded build.
 
 Download the installer for your platform from the latest release:
 
-- **macOS** — `.dmg`
+- **macOS** — `-macOS.dmg` (Apple Silicon) or `-macOS-Intel.dmg` (Intel)
 - **Windows** — `-Setup.exe`
 - **Linux** — `.tar.gz`
 

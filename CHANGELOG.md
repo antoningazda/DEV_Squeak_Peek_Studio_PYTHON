@@ -3,6 +3,13 @@
 All notable user-facing changes to Squeak Peek Studio. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.1] — 2026-10-10
+
+- Added an **Intel Mac** build, `SqueakPeekStudio-macOS-Intel.dmg`. The
+  existing `SqueakPeekStudio-macOS.dmg` only runs on Apple Silicon (M1 and
+  later). The Intel build uses PyTorch 2.2.2, the last PyTorch release for
+  Intel Macs.
+
 ## [0.1.0] — 2026-10-08
 
 - New **PITCH** detector: one event per stretch where a coherent frequency

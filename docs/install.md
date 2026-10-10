@@ -12,14 +12,18 @@ Every release publishes these files:
 
 | File | Platform | Notes |
 |---|---|---|
-| `SqueakPeekStudio-macOS.dmg` | macOS (Apple Silicon & Intel) | Disk image — drag to Applications |
+| `SqueakPeekStudio-macOS.dmg` | macOS, Apple Silicon (M1 and later) | Disk image — drag to Applications |
+| `SqueakPeekStudio-macOS-Intel.dmg` | macOS, Intel | Disk image — drag to Applications |
 | `SqueakPeekStudio-windows-Setup.exe` | Windows 10/11 | Installer, adds a Start-menu entry |
 | `SqueakPeekStudio-windows.zip` | Windows 10/11 | Portable — unzip and run, no installer |
 | `SqueakPeekStudio-linux.tar.gz` | 64-bit Linux | Extract and run the binary |
 
 === "macOS"
 
-    1. Download `SqueakPeekStudio-macOS.dmg` and open it.
+    1. Download `SqueakPeekStudio-macOS.dmg` (Apple Silicon) or
+       `SqueakPeekStudio-macOS-Intel.dmg` (Intel Mac) and open it. Not sure
+       which? Apple menu → **About This Mac** → *Chip* (Apple M…) or
+       *Processor* (Intel).
     2. Drag **Squeak Peek Studio** into your **Applications** folder.
     3. **The first launch is special.** Right-click (or Control-click) the
        app and choose **Open**, then click **Open** in the dialog.
